@@ -16,17 +16,15 @@
 
 ---
 
-## ✨ Features
-
 | Feature | Description |
 |---------|-------------|
 | 🔄 **Real-time Sync** | Expenses sync instantly across all devices via Firestore |
 | 💰 **Smart Settlements** | Min-Cash-Flow algorithm minimizes the number of transactions |
 | 🧾 **AI Receipt Scanning** | Powered by Gemini 2.0 Flash for automatic expense entry |
+| ⚖️ **Itemized Splitting** | Manually split expenses unequally for granular "micromanagement" |
 | 👥 **Ghost Members** | Add people who aren't on the app yet |
-| 📱 **Mobile-First** | Designed for on-the-go expense tracking |
-| 🔒 **Offline Support** | Works without internet, syncs when back online |
-| 🏷️ **Segregated Splits** | Filter settlements by Major (flights, hotels) vs Daily (food, transport) |
+| 📱 **Native Mobile Feel** | Bottom-sheet modals, safe-area support, and notch optimization |
+| 🏷️ **Segregated Splits** | Filter settlements by Major (flights, hotels) vs Daily (food) |
 
 ---
 
@@ -76,11 +74,12 @@ graph TB
             ├── paid_by → references member ID (not user ID)
             ├── split_type (equal/custom)
             │
-            └── /splits/{splitId}  (for custom splits only)
+            └── /splits/{splitId}  (for itemized splits only)
                     └── member_id, amount
 ```
 
-> **Key Design Decision:** `paid_by` always references `trip_members.id`, never `auth.users.id`. This enables ghost members (people without accounts) to be payers.
+> **Key Design Decision:** `paid_by` always references `trip_members.id`, never `auth.users.id`. This enables ghost members (people without accounts) to be payers. 
+> **Advanced Splitting:** Manual itemized splits allow for unequal distributions (e.g., individual meal prices) within a single expense.
 
 ---
 
@@ -230,8 +229,8 @@ src/
 
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
-| `ci.yml` | Push/PR to main | Type check + Build verification |
-| `health-check.yml` | Every 5 days | Ping Firebase to prevent inactivity pause |
+| `deploy.yml` | Push to main | Automated deployment to GitHub Pages via Official Actions |
+| `health-check.yml` | Every 12 hours | Proactive Firebase health monitoring with Discord alerts |
 
 ### Required Secrets
 
