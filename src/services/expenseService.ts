@@ -9,7 +9,8 @@
  * MIGRATION NOTE: Service interface matches Supabase version.
  */
 
-collection,
+import {
+    collection,
     doc,
     addDoc,
     getDocs,
