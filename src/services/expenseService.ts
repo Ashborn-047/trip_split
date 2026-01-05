@@ -9,16 +9,12 @@
  * MIGRATION NOTE: Service interface matches Supabase version.
  */
 
-import {
-    collection,
+collection,
     doc,
     addDoc,
-    getDoc,
     getDocs,
     updateDoc,
-    deleteDoc,
     query,
-    where,
     orderBy,
     onSnapshot,
     serverTimestamp,
