@@ -31,51 +31,43 @@
 ## 🏗️ Technical Architecture
 
 ```mermaid
-graph TD
-    %% Base Styles
-    classDef clientLayer fill:#f5f3ff,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b;
-    classDef logicLayer fill:#eff6ff,stroke:#2563eb,stroke-width:2px,color:#1e3a8a;
-    classDef infraLayer fill:#fff7ed,stroke:#ea580c,stroke-width:2px,color:#7c2d12;
-    classDef external fill:#f8fafc,stroke:#64748b,stroke-width:1px,stroke-dasharray: 5 5;
-
-    subgraph Presentation["📱 Presentation Layer (React + Tailwind)"]
-        UI["<b>UI Components</b><br/>Glassmorphism Screens<br/>Bottom Sheet Modals"]
-        Theme["<b>Design System</b><br/>Safe Area Handling<br/>Dynamic Viewports"]
+graph LR
+    %% Minimalist Styles
+    classDef default fill:none,stroke:#64748b,stroke-width:1px,color:#475569;
+    classDef primary fill:#f5f3ff,stroke:#7c3aed,stroke-width:1.5px,color:#1e1b4b;
+    classDef accent fill:#f0f9ff,stroke:#0ea5e9,stroke-width:1.5px,color:#0c4a6e;
+    
+    %% Components
+    User((👤 User))
+    
+    subgraph App ["TripSplit Frontend"]
+        UI[UI / React]
+        Logic{Split Engine}
     end
-
-    subgraph Application["⚙️ Application Logic"]
-        Split["<b>Expense Engine</b><br/>Equal/Itemized Splits<br/>Currency Formatting"]
-        Algo["<b>Settlement Algo</b><br/>Min-Cash-Flow<br/>(Greedy Match)"]
-        State["<b>Global State</b><br/>Auth Persistence<br/>Real-time Listeners"]
+    
+    subgraph Services ["Cloud Services"]
+        Auth[Firebase Auth]
+        DB[(Firestore)]
+        AI[Gemini AI]
     end
-
-    subgraph Infrastructure["🌐 Infrastructure & Cloud"]
-        Firestore[("<b>Cloud Firestore</b><br/>NoSQL Document Store<br/>Real-time Sync")]
-        Auth["<b>Firebase Auth</b><br/>Anonymous & Email<br/>Identity Management"]
-        Gemini["<b>Gemini AI</b><br/>Receipt OCR<br/>Prompt Engineering"]
+    
+    subgraph Ops ["Monitoring"]
+        CI[GitHub Actions]
+        Alerts[Discord]
     end
-
-    subgraph CI_CD["🚀 DevOps Ecosystem"]
-        Actions["<b>GitHub Actions</b><br/>Official Pages Deploy<br/>Health Pulse (12h)"]
-        Discord["<b>Discord Webhooks</b><br/>Status Monitoring<br/>Failure Alerts"]
-    end
-
-    %% Flows
-    UI <--> State
-    State --> Split
-    Split --> Algo
-    Split <--> Firestore
-    State --> Auth
-    UI --> Gemini
-    Gemini -.-> Split
-    Firestore -.-> Actions
-    Actions --> Discord
-
-    %% Assign Classes
-    class Presentation,UI,Theme clientLayer;
-    class Application,Split,Algo,State logicLayer;
-    class Infrastructure,Firestore,Auth,Gemini infraLayer;
-    class CI_CD,Actions,Discord external;
+    
+    %% Flow
+    User --> UI
+    UI <--> Logic
+    Logic <--> DB
+    UI --- Auth
+    UI --- AI
+    DB --- CI
+    CI --- Alerts
+    
+    %% Branding
+    class UI,Logic primary;
+    class Auth,DB,AI accent;
 ```
 
 ### Data Model
