@@ -28,36 +28,54 @@
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Technical Architecture
 
 ```mermaid
-graph TB
-    subgraph Client["Frontend (React + TypeScript)"]
-        UI[UI Components]
-        State[React State]
-        Services[Service Layer]
+graph TD
+    %% Base Styles
+    classDef clientLayer fill:#f5f3ff,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b;
+    classDef logicLayer fill:#eff6ff,stroke:#2563eb,stroke-width:2px,color:#1e3a8a;
+    classDef infraLayer fill:#fff7ed,stroke:#ea580c,stroke-width:2px,color:#7c2d12;
+    classDef external fill:#f8fafc,stroke:#64748b,stroke-width:1px,stroke-dasharray: 5 5;
+
+    subgraph Presentation["📱 Presentation Layer (React + Tailwind)"]
+        UI["<b>UI Components</b><br/>Glassmorphism Screens<br/>Bottom Sheet Modals"]
+        Theme["<b>Design System</b><br/>Safe Area Handling<br/>Dynamic Viewports"]
     end
-    
-    subgraph Firebase["Firebase Backend"]
-        Auth[Firebase Auth<br/>Anonymous + Email]
-        Firestore[(Firestore DB<br/>Real-time sync)]
-        Rules[Security Rules]
+
+    subgraph Application["⚙️ Application Logic"]
+        Split["<b>Expense Engine</b><br/>Equal/Itemized Splits<br/>Currency Formatting"]
+        Algo["<b>Settlement Algo</b><br/>Min-Cash-Flow<br/>(Greedy Match)"]
+        State["<b>Global State</b><br/>Auth Persistence<br/>Real-time Listeners"]
     end
-    
-    subgraph AI["AI Layer"]
-        Gemini[Gemini 2.0 Flash<br/>Receipt OCR]
+
+    subgraph Infrastructure["🌐 Infrastructure & Cloud"]
+        Firestore[("<b>Cloud Firestore</b><br/>NoSQL Document Store<br/>Real-time Sync")]
+        Auth["<b>Firebase Auth</b><br/>Anonymous & Email<br/>Identity Management"]
+        Gemini["<b>Gemini AI</b><br/>Receipt OCR<br/>Prompt Engineering"]
     end
-    
-    UI --> State
-    State --> Services
-    Services --> Auth
-    Services --> Firestore
-    Services --> Gemini
-    Firestore --> Rules
-    
-    style Client fill:#e0e7ff,stroke:#6366f1
-    style Firebase fill:#fef3c7,stroke:#f59e0b
-    style AI fill:#dbeafe,stroke:#3b82f6
+
+    subgraph CI_CD["🚀 DevOps Ecosystem"]
+        Actions["<b>GitHub Actions</b><br/>Official Pages Deploy<br/>Health Pulse (12h)"]
+        Discord["<b>Discord Webhooks</b><br/>Status Monitoring<br/>Failure Alerts"]
+    end
+
+    %% Flows
+    UI <--> State
+    State --> Split
+    Split --> Algo
+    Split <--> Firestore
+    State --> Auth
+    UI --> Gemini
+    Gemini -.-> Split
+    Firestore -.-> Actions
+    Actions --> Discord
+
+    %% Assign Classes
+    class Presentation,UI,Theme clientLayer;
+    class Application,Split,Algo,State logicLayer;
+    class Infrastructure,Firestore,Auth,Gemini infraLayer;
+    class CI_CD,Actions,Discord external;
 ```
 
 ### Data Model
