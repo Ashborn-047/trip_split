@@ -29,22 +29,21 @@ jobs:
           FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
         run: |
           node -e "
-          const { initializeApp } = require('firebase/app');
-          const { getFirestore, collection, getDocs, limit, query } = require('firebase/firestore');
+          const firebase = require('firebase/compat/app');
+          require('firebase/compat/firestore');
           
           async function healthCheck() {
             try {
-              const app = initializeApp({
+              const app = firebase.default.initializeApp({
                 apiKey: process.env.FIREBASE_API_KEY,
                 projectId: process.env.FIREBASE_PROJECT_ID,
               });
               
-              const db = getFirestore(app);
+              const db = app.firestore();
               const start = Date.now();
               
               // Simple query to ping the database
-              const q = query(collection(db, 'trips'), limit(1));
-              await getDocs(q);
+              await db.collection('trips').limit(1).get();
               
               const latency = Date.now() - start;
               console.log('STATUS=healthy');
