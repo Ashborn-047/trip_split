@@ -1,0 +1,15 @@
+{
+    "indexes": [
+        {
+            "collectionGroup": "expenses",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "created_at",
+                    "order": "DESCENDING"
+                }
+            ]
+        }
+    ],
+    "fieldOverrides": []
+}

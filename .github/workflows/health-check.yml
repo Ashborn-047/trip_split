@@ -1,0 +1,100 @@
+name: Firebase Health Check
+
+on:
+  schedule:
+    # Run every 5 days at 9:00 AM UTC to prevent project pause
+    - cron: '0 9 */5 * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Firebase Admin
+        run: npm install firebase
+
+      - name: Run Health Check
+        id: health
+        env:
+          FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+        run: |
+          node -e "
+          const { initializeApp } = require('firebase/app');
+          const { getFirestore, collection, getDocs, limit, query } = require('firebase/firestore');
+          
+          async function healthCheck() {
+            try {
+              const app = initializeApp({
+                apiKey: process.env.FIREBASE_API_KEY,
+                projectId: process.env.FIREBASE_PROJECT_ID,
+              });
+              
+              const db = getFirestore(app);
+              const start = Date.now();
+              
+              // Simple query to ping the database
+              const q = query(collection(db, 'trips'), limit(1));
+              await getDocs(q);
+              
+              const latency = Date.now() - start;
+              console.log('STATUS=healthy');
+              console.log('LATENCY=' + latency + 'ms');
+            } catch (error) {
+              console.log('STATUS=unhealthy');
+              console.log('ERROR=' + error.message);
+              process.exit(1);
+            }
+          }
+          
+          healthCheck();
+          "
+
+      - name: Send Discord Notification (Success)
+        if: success()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -H "Content-Type: application/json" \
+            -d '{
+              "embeds": [{
+                "title": "✅ TripSplit Health Check",
+                "description": "Firebase database is **healthy** and responding.",
+                "color": 5763719,
+                "fields": [
+                  {"name": "Status", "value": "Online", "inline": true},
+                  {"name": "Project", "value": "TripSplit", "inline": true}
+                ],
+                "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+              }]
+            }' \
+            $DISCORD_WEBHOOK
+
+      - name: Send Discord Notification (Failure)
+        if: failure()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -H "Content-Type: application/json" \
+            -d '{
+              "embeds": [{
+                "title": "❌ TripSplit Health Check Failed",
+                "description": "Firebase database is **not responding**. Check the project status.",
+                "color": 15548997,
+                "fields": [
+                  {"name": "Status", "value": "Offline/Error", "inline": true},
+                  {"name": "Action Required", "value": "Check Firebase Console", "inline": true}
+                ],
+                "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+              }]
+            }' \
+            $DISCORD_WEBHOOK

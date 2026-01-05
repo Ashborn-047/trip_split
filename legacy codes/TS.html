@@ -1,0 +1,870 @@
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { 
+  Plus, Trash2, Users, Receipt, ArrowRightLeft, DollarSign, PiggyBank, 
+  X, CheckCircle, AlertCircle, ArrowRight, Utensils, Car, Bed, Music, 
+  MoreHorizontal, PieChart, Plane, Coffee, Scale, AlertTriangle, LogIn, 
+  Camera, Loader2, Copy, LogOut, UserPlus 
+} from 'lucide-react';
+
+// Firebase Imports
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, signOut } from 'firebase/auth';
+import { 
+  getFirestore, collection, addDoc, onSnapshot, query, where, 
+  doc, setDoc, deleteDoc, updateDoc, arrayUnion, getDoc 
+} from 'firebase/firestore';
+
+// --- CONFIGURATION ---
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'trip-split-default';
+
+// Gemini API Key
+const apiKey = ""; 
+
+// --- CONSTANTS ---
+const CATEGORIES = [
+  { id: 'travel', label: 'Travel', icon: Car, color: 'text-blue-600 bg-blue-100' },
+  { id: 'food', label: 'Food', icon: Utensils, color: 'text-orange-600 bg-orange-100' },
+  { id: 'stay', label: 'Stay', icon: Bed, color: 'text-indigo-600 bg-indigo-100' },
+  { id: 'fun', label: 'Fun', icon: Music, color: 'text-pink-600 bg-pink-100' },
+  { id: 'other', label: 'Other', icon: MoreHorizontal, color: 'text-slate-600 bg-slate-100' },
+];
+
+export default function App() {
+  // --- STATE: AUTH & USER ---
+  const [user, setUser] = useState(null);
+  const [tripId, setTripId] = useState(localStorage.getItem('trip_split_active_id') || null);
+  const [view, setView] = useState('loading'); // 'loading', 'login', 'dashboard'
+
+  // --- STATE: DATA ---
+  const [tripData, setTripData] = useState(null); // Metadata & Members
+  const [expenses, setExpenses] = useState([]);
+  
+  // --- STATE: UI ---
+  const [activeTab, setActiveTab] = useState('expenses'); 
+  const [expenseTypeFilter, setExpenseTypeFilter] = useState('major'); // 'major' | 'daily'
+  const [settleFilter, setSettleFilter] = useState('all'); 
+  const [loadingAction, setLoadingAction] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // --- STATE: FORMS ---
+  // Login/Join
+  const [joinCode, setJoinCode] = useState('');
+  const [userName, setUserName] = useState('');
+  
+  // Add Expense
+  const [desc, setDesc] = useState('');
+  const [amount, setAmount] = useState('');
+  const [category, setCategory] = useState('other');
+  const [paidBy, setPaidBy] = useState(''); // UID
+  const [isCustomSplit, setIsCustomSplit] = useState(false);
+  const [customShares, setCustomShares] = useState({}); // UID -> Amount
+  const [isScanning, setIsScanning] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // Add Member (Offline)
+  const [newMemberName, setNewMemberName] = useState('');
+
+  // --- EFFECT: INITIALIZE AUTH ---
+  useEffect(() => {
+    const init = async () => {
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        await signInWithCustomToken(auth, __initial_auth_token);
+      } else {
+        await signInAnonymously(auth);
+      }
+    };
+    init();
+    return onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      if (!u) setView('login');
+    });
+  }, []);
+
+  // --- EFFECT: SYNC TRIP DATA ---
+  useEffect(() => {
+    if (!user) return;
+    if (!tripId) {
+      setView('login');
+      return;
+    }
+
+    // 1. Sync Trip Metadata & Members
+    const tripRef = doc(db, 'artifacts', appId, 'public', 'data', 'trips', tripId);
+    const unsubTrip = onSnapshot(tripRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setTripData(docSnap.data());
+        setView('dashboard');
+      } else {
+        setErrorMsg("Trip not found or deleted.");
+        setTripId(null);
+        localStorage.removeItem('trip_split_active_id');
+        setView('login');
+      }
+    }, (err) => {
+      console.error("Trip sync failed:", err);
+      setErrorMsg("Connection failed.");
+    });
+
+    // 2. Sync Expenses
+    const expQuery = query(
+      collection(db, 'artifacts', appId, 'public', 'data', 'trip_expenses'),
+      where('tripId', '==', tripId)
+    );
+    
+    const unsubExp = onSnapshot(expQuery, (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Sort desc by created time
+      list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      setExpenses(list);
+    });
+
+    return () => {
+      unsubTrip();
+      unsubExp();
+    };
+  }, [user, tripId]);
+
+  // --- ACTIONS: TRIP MANAGEMENT ---
+
+  const createTrip = async () => {
+    if (!userName.trim()) return alert("Please enter your name");
+    setLoadingAction(true);
+    try {
+      // Generate unique 6-char code
+      const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const newTripId = `TRIP-${code}`;
+      
+      const memberObj = {
+        displayName: userName.trim(),
+        role: 'admin',
+        joinedAt: Date.now()
+      };
+
+      const newTrip = {
+        code,
+        name: `${userName}'s Trip`,
+        createdAt: Date.now(),
+        createdBy: user.uid,
+        // The core identity map: UID -> Profile
+        members: {
+          [user.uid]: memberObj
+        }
+      };
+
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trips', newTripId), newTrip);
+      
+      setTripId(newTripId);
+      localStorage.setItem('trip_split_active_id', newTripId);
+      setPaidBy(user.uid); // Default payer
+    } catch (err) {
+      console.error(err);
+      setErrorMsg("Could not create trip.");
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  const joinTrip = async () => {
+    if (!joinCode.trim() || !userName.trim()) return alert("Enter code and name");
+    setLoadingAction(true);
+    try {
+      const targetId = `TRIP-${joinCode.trim().toUpperCase()}`;
+      const tripRef = doc(db, 'artifacts', appId, 'public', 'data', 'trips', targetId);
+      const tripSnap = await getDoc(tripRef);
+
+      if (!tripSnap.exists()) {
+        alert("Trip not found! Check the code.");
+        setLoadingAction(false);
+        return;
+      }
+
+      // Add user to members map if not exists
+      const currentData = tripSnap.data();
+      if (!currentData.members[user.uid]) {
+        await updateDoc(tripRef, {
+          [`members.${user.uid}`]: {
+            displayName: userName.trim(),
+            role: 'member',
+            joinedAt: Date.now()
+          }
+        });
+      }
+
+      setTripId(targetId);
+      localStorage.setItem('trip_split_active_id', targetId);
+      setPaidBy(user.uid);
+    } catch (err) {
+      console.error(err);
+      setErrorMsg("Failed to join.");
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  const addOfflineMember = async () => {
+    if (!newMemberName.trim()) return;
+    // Generate a placeholder UID for offline users
+    const ghostId = `ghost_${Date.now()}`;
+    
+    try {
+      const tripRef = doc(db, 'artifacts', appId, 'public', 'data', 'trips', tripId);
+      await updateDoc(tripRef, {
+        [`members.${ghostId}`]: {
+          displayName: newMemberName.trim(),
+          role: 'ghost',
+          joinedAt: Date.now()
+        }
+      });
+      setNewMemberName('');
+    } catch (err) {
+      alert("Failed to add member");
+    }
+  };
+
+  // --- ACTIONS: EXPENSES ---
+
+  const handleAddExpense = async (e) => {
+    e.preventDefault();
+    if (!desc || !amount || !paidBy) return;
+
+    const val = parseFloat(amount);
+    if (isNaN(val) || val <= 0) return alert("Invalid amount");
+
+    // Validation for custom split
+    if (isCustomSplit) {
+      const totalAllocated = Object.values(customShares).reduce((a, b) => a + (parseFloat(b) || 0), 0);
+      if (Math.abs(totalAllocated - val) > 1.0) {
+        return alert(`Split amounts (${totalAllocated}) do not match total (${val})`);
+      }
+    }
+
+    const expenseDoc = {
+      tripId,
+      description: desc,
+      amount: val,
+      category,
+      type: expenseTypeFilter, // 'major' or 'daily'
+      date: new Date().toISOString(),
+      createdAt: Date.now(),
+      createdBy: user.uid,
+      paidBy: paidBy, // UID
+      splitType: isCustomSplit ? 'custom' : 'equal',
+      splitDetails: isCustomSplit ? customShares : null // Map of UID -> Amount
+    };
+
+    try {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'trip_expenses'), expenseDoc);
+      // Reset Form
+      setDesc('');
+      setAmount('');
+      setCategory('other');
+      setIsCustomSplit(false);
+      setCustomShares({});
+    } catch (err) {
+      console.error(err);
+      alert("Failed to add expense");
+    }
+  };
+
+  const deleteExpense = async (id) => {
+    if (!confirm("Delete this expense?")) return;
+    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trip_expenses', id));
+  };
+
+  // --- AI SCANNER ---
+  const handleScan = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setIsScanning(true);
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64 = reader.result.split(',')[1];
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { text: "Analyze receipt. Return JSON: {\"amount\": number, \"desc\": string, \"category\": string (travel,food,stay,fun,other)}. Desc max 4 words." },
+                { inlineData: { mimeType: file.type, data: base64 } }
+              ]
+            }]
+          })
+        });
+        const json = await res.json();
+        const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+        const clean = text.replace(/```json|```/g, '').trim();
+        const data = JSON.parse(clean);
+        
+        if (data.amount) setAmount(data.amount);
+        if (data.desc) setDesc(data.desc);
+        if (data.category) setCategory(data.category.toLowerCase());
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      alert("Scan failed. Try manual entry.");
+    } finally {
+      setIsScanning(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // --- CORE ALGORITHM: BALANCES ---
+  const summary = useMemo(() => {
+    if (!tripData) return null;
+
+    const memberIds = Object.keys(tripData.members);
+    
+    // Helper to calculate balances for a subset of expenses
+    const calculateSubset = (expenseList) => {
+      const balances = {}; // UID -> Net Balance
+      memberIds.forEach(id => balances[id] = 0);
+
+      expenseList.forEach(exp => {
+        const payerId = exp.paidBy;
+        const cost = exp.amount;
+
+        // Credit the payer
+        balances[payerId] = (balances[payerId] || 0) + cost;
+
+        // Debit the consumers
+        if (exp.splitType === 'custom' && exp.splitDetails) {
+          Object.entries(exp.splitDetails).forEach(([uid, share]) => {
+            balances[uid] = (balances[uid] || 0) - (parseFloat(share) || 0);
+          });
+        } else {
+          // Equal split among ALL current members (naive but standard)
+          // A better approach would be to store 'involvedMembers' in expense, 
+          // but for this version we assume equal split = all members.
+          const splitAmt = cost / memberIds.length;
+          memberIds.forEach(uid => {
+            balances[uid] = (balances[uid] || 0) - splitAmt;
+          });
+        }
+      });
+
+      return balances;
+    };
+
+    const globalBal = calculateSubset(expenses);
+    const majorBal = calculateSubset(expenses.filter(e => e.type === 'major'));
+    const dailyBal = calculateSubset(expenses.filter(e => e.type === 'daily' || !e.type));
+
+    const totalSpent = expenses.reduce((sum, e) => sum + e.amount, 0);
+
+    return { globalBal, majorBal, dailyBal, totalSpent };
+  }, [tripData, expenses]);
+
+  // --- CORE ALGORITHM: SETTLEMENTS (Min Cash Flow) ---
+  const settlementPlan = useMemo(() => {
+    if (!summary || !tripData) return [];
+    
+    let targetBalances = {};
+    if (settleFilter === 'major') targetBalances = { ...summary.majorBal };
+    else if (settleFilter === 'daily') targetBalances = { ...summary.dailyBal };
+    else targetBalances = { ...summary.globalBal };
+
+    const debtors = [];
+    const creditors = [];
+
+    // Sort into lists
+    Object.entries(targetBalances).forEach(([uid, bal]) => {
+      if (bal < -0.01) debtors.push({ uid, amount: bal }); // negative
+      if (bal > 0.01) creditors.push({ uid, amount: bal }); // positive
+    });
+
+    debtors.sort((a, b) => a.amount - b.amount); // Ascending (most negative first)
+    creditors.sort((a, b) => b.amount - a.amount); // Descending (most positive first)
+
+    const plan = [];
+    let i = 0, j = 0;
+
+    while (i < debtors.length && j < creditors.length) {
+      let debtor = debtors[i];
+      let creditor = creditors[j];
+
+      // The amount to move is min(|debt|, credit)
+      let move = Math.min(Math.abs(debtor.amount), creditor.amount);
+      
+      plan.push({
+        from: debtor.uid,
+        fromName: tripData.members[debtor.uid]?.displayName || 'Unknown',
+        to: creditor.uid,
+        toName: tripData.members[creditor.uid]?.displayName || 'Unknown',
+        amount: move
+      });
+
+      debtor.amount += move;
+      creditor.amount -= move;
+
+      if (Math.abs(debtor.amount) < 0.01) i++;
+      if (creditor.amount < 0.01) j++;
+    }
+
+    return plan;
+  }, [summary, settleFilter, tripData]);
+
+  // --- HELPER: Copy Code ---
+  const copyCode = () => {
+    const textArea = document.createElement("textarea");
+    textArea.value = tripData?.code;
+    document.body.appendChild(textArea);
+    textArea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textArea);
+    alert("Trip Code Copied!");
+  };
+
+  const getMemberName = (uid) => tripData?.members[uid]?.displayName || 'Unknown';
+
+  // --- RENDER: LOGIN VIEW ---
+  if (view === 'login' || !user) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans">
+        <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-violet-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-violet-200">
+              <PiggyBank size={32} />
+            </div>
+            <h1 className="text-3xl font-black text-slate-800">TripSplit</h1>
+            <p className="text-slate-500 mt-2">Smart expenses for groups.</p>
+          </div>
+
+          <div className="space-y-6">
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Your Name</label>
+              <input 
+                value={userName} 
+                onChange={e => setUserName(e.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-violet-500"
+                placeholder="e.g. Rahul"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <button 
+                onClick={createTrip} 
+                disabled={loadingAction}
+                className="bg-violet-600 text-white p-4 rounded-xl font-bold hover:bg-violet-700 disabled:opacity-50 flex flex-col items-center justify-center gap-2"
+              >
+                {loadingAction ? <Loader2 className="animate-spin"/> : <Plus size={24}/>}
+                <span>Create New</span>
+              </button>
+
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl">
+                 <input 
+                    value={joinCode}
+                    onChange={e => setJoinCode(e.target.value.toUpperCase())}
+                    placeholder="CODE"
+                    className="w-full text-center font-mono font-bold text-lg bg-white border border-slate-200 rounded-lg py-1 mb-2 uppercase"
+                    maxLength={6}
+                 />
+                 <button 
+                  onClick={joinTrip}
+                  disabled={loadingAction}
+                  className="w-full bg-slate-800 text-white py-2 rounded-lg font-bold text-sm hover:bg-slate-900"
+                 >
+                   Join Trip
+                 </button>
+              </div>
+            </div>
+            {errorMsg && <p className="text-center text-rose-500 text-sm font-bold">{errorMsg}</p>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'loading' || !tripData) return <div className="min-h-screen flex items-center justify-center text-violet-600"><Loader2 className="animate-spin" size={40}/></div>;
+
+  const memberList = Object.entries(tripData.members).map(([uid, data]) => ({ uid, ...data }));
+
+  // --- RENDER: DASHBOARD ---
+  return (
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-800 flex justify-center">
+      <div className="w-full max-w-md bg-white shadow-2xl min-h-screen flex flex-col relative">
+        
+        {/* HEADER */}
+        <header className="bg-gradient-to-br from-violet-600 to-indigo-700 text-white p-6 pb-20 rounded-b-[2.5rem] shadow-xl relative z-10 overflow-hidden">
+           <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+           
+           <div className="flex justify-between items-start mb-6 relative z-10">
+              <div>
+                <h2 className="text-xs font-bold opacity-80 uppercase tracking-widest">{tripData.name}</h2>
+                <div 
+                  onClick={copyCode}
+                  className="mt-1 flex items-center gap-2 bg-white/10 w-fit px-3 py-1.5 rounded-lg cursor-pointer hover:bg-white/20 transition-all border border-white/10"
+                >
+                  <span className="font-mono font-bold text-lg tracking-wider">{tripData.code}</span>
+                  <Copy size={14} />
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  setTripId(null);
+                  localStorage.removeItem('trip_split_active_id');
+                  setView('login');
+                }}
+                className="p-2 bg-white/10 rounded-full hover:bg-white/20"
+              >
+                <LogOut size={18} />
+              </button>
+           </div>
+
+           <div className="relative z-10">
+              <p className="text-indigo-200 text-xs font-bold uppercase mb-1">Total Trip Cost</p>
+              <h1 className="text-5xl font-black tracking-tighter">
+                <span className="text-2xl align-top opacity-60 mr-1">₹</span>
+                {summary.totalSpent.toLocaleString()}
+              </h1>
+           </div>
+        </header>
+
+        {/* MAIN CONTENT */}
+        <main className="flex-1 -mt-14 px-4 pb-24 overflow-y-auto custom-scrollbar relative z-20">
+          
+          {/* TAB: MEMBERS */}
+          {activeTab === 'friends' && (
+            <div className="space-y-4 animate-in slide-in-from-bottom-4 fade-in duration-500">
+               <div className="bg-white p-5 rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100">
+                  <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                    <Users className="text-violet-500" size={20}/> Group Members
+                  </h3>
+                  
+                  <div className="space-y-3">
+                    {memberList.map(m => (
+                      <div key={m.uid} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
+                        <div className="flex items-center gap-3">
+                           <div className="w-10 h-10 bg-violet-100 text-violet-600 rounded-full flex items-center justify-center font-bold">
+                             {m.displayName.charAt(0)}
+                           </div>
+                           <div>
+                             <p className="font-bold text-slate-700">{m.displayName}</p>
+                             <p className="text-xs text-slate-400 capitalize">{m.role}</p>
+                           </div>
+                        </div>
+                        {m.uid.startsWith('ghost') && (
+                          <span className="text-[10px] bg-slate-200 text-slate-500 px-2 py-1 rounded font-bold">OFFLINE</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-slate-100">
+                     <label className="text-xs font-bold text-slate-400 uppercase">Add Offline Member</label>
+                     <div className="flex gap-2 mt-2">
+                       <input 
+                         value={newMemberName}
+                         onChange={e => setNewMemberName(e.target.value)}
+                         placeholder="Name (e.g. Driver)"
+                         className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold"
+                       />
+                       <button onClick={addOfflineMember} className="bg-slate-800 text-white p-2 rounded-lg">
+                         <UserPlus size={18} />
+                       </button>
+                     </div>
+                     <p className="text-[10px] text-slate-400 mt-2">
+                       * Use the invite code <strong>{tripData.code}</strong> to let real friends join. Use this for shared costs like drivers/guides.
+                     </p>
+                  </div>
+               </div>
+            </div>
+          )}
+
+          {/* TAB: EXPENSES */}
+          {activeTab === 'expenses' && (
+             <div className="space-y-5 animate-in slide-in-from-bottom-4 fade-in duration-500">
+                
+                {/* Add Expense Form */}
+                <div className="bg-white p-5 rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 relative overflow-hidden">
+                   <div className={`absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 rounded-full opacity-10 pointer-events-none 
+                      ${expenseTypeFilter === 'major' ? 'bg-blue-600' : 'bg-orange-600'}`}></div>
+
+                   <div className="flex justify-between items-center mb-4">
+                      <h3 className="font-bold text-slate-700 flex items-center gap-2">
+                        <DollarSign className={expenseTypeFilter === 'major' ? 'text-blue-600' : 'text-orange-600'} size={20}/>
+                        Add {expenseTypeFilter === 'major' ? 'Major' : 'Daily'}
+                      </h3>
+                      {/* AI Scan Trigger */}
+                      <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex items-center gap-1.5 text-xs font-bold bg-violet-50 text-violet-600 px-3 py-1.5 rounded-lg border border-violet-100 hover:bg-violet-100 transition-colors"
+                      >
+                         {isScanning ? <Loader2 size={14} className="animate-spin"/> : <Camera size={14}/>}
+                         Scan Receipt
+                         <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={handleScan} />
+                      </button>
+                   </div>
+
+                   <form onSubmit={handleAddExpense} className="space-y-4 relative z-10">
+                      <div className="flex gap-3">
+                         <input 
+                           value={desc} 
+                           onChange={e => setDesc(e.target.value)}
+                           placeholder="Description"
+                           className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-violet-500"
+                         />
+                         <select 
+                           value={category} 
+                           onChange={e => setCategory(e.target.value)}
+                           className="w-1/3 px-2 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium text-sm outline-none"
+                         >
+                           {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                         </select>
+                      </div>
+
+                      <div className="flex gap-3">
+                        <div className="w-1/2 relative">
+                           <span className="absolute left-3 top-3 text-slate-400 font-bold">₹</span>
+                           <input 
+                             type="number"
+                             value={amount}
+                             onChange={e => setAmount(e.target.value)}
+                             placeholder="0"
+                             className="w-full pl-7 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-violet-500"
+                           />
+                        </div>
+                        <select
+                          value={paidBy}
+                          onChange={e => setPaidBy(e.target.value)}
+                          className="w-1/2 px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium text-sm outline-none"
+                        >
+                          <option value="" disabled>Paid By</option>
+                          {memberList.map(m => (
+                            <option key={m.uid} value={m.uid}>{m.displayName}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Custom Split Toggle */}
+                      <div>
+                        <button 
+                          type="button"
+                          onClick={() => setIsCustomSplit(!isCustomSplit)}
+                          className="text-xs font-bold text-violet-600 flex items-center gap-1 mb-2"
+                        >
+                          <Scale size={12}/> {isCustomSplit ? 'Switch to Equal Split' : 'Unequal Split?'}
+                        </button>
+
+                        {isCustomSplit && (
+                          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
+                             {memberList.map(m => (
+                               <div key={m.uid} className="flex items-center justify-between">
+                                  <span className="text-sm text-slate-600 font-medium">{m.displayName}</span>
+                                  <input 
+                                    type="number"
+                                    placeholder="0"
+                                    value={customShares[m.uid] || ''}
+                                    onChange={e => setCustomShares({...customShares, [m.uid]: e.target.value})}
+                                    className="w-20 px-2 py-1 text-right border border-slate-300 rounded bg-white text-sm font-bold"
+                                  />
+                               </div>
+                             ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <button 
+                        type="submit"
+                        className={`w-full text-white py-3 rounded-xl font-bold shadow-lg transition-transform active:scale-95 
+                          ${expenseTypeFilter === 'major' ? 'bg-blue-600 shadow-blue-200' : 'bg-orange-600 shadow-orange-200'}`}
+                      >
+                        Add Expense
+                      </button>
+                   </form>
+                </div>
+
+                {/* Sub-Tabs */}
+                <div className="flex bg-slate-200/50 p-1 rounded-xl">
+                   <button 
+                     onClick={() => setExpenseTypeFilter('major')}
+                     className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all
+                     ${expenseTypeFilter === 'major' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}
+                   >
+                     <Plane size={14}/> Major Costs
+                   </button>
+                   <button 
+                     onClick={() => setExpenseTypeFilter('daily')}
+                     className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all
+                     ${expenseTypeFilter === 'daily' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500'}`}
+                   >
+                     <Coffee size={14}/> Daily Spends
+                   </button>
+                </div>
+
+                {/* List */}
+                <div className="space-y-3">
+                   {expenses.filter(e => {
+                      if (expenseTypeFilter === 'major') return e.type === 'major';
+                      return e.type === 'daily' || !e.type;
+                   }).length === 0 ? (
+                      <div className="text-center py-10 opacity-50">
+                        <Receipt size={40} className="mx-auto mb-2 text-slate-300"/>
+                        <p className="text-sm font-bold text-slate-400">No expenses yet</p>
+                      </div>
+                   ) : (
+                     expenses
+                      .filter(e => {
+                        if (expenseTypeFilter === 'major') return e.type === 'major';
+                        return e.type === 'daily' || !e.type;
+                      })
+                      .map(exp => {
+                        const cat = CATEGORIES.find(c => c.id === exp.category) || CATEGORIES[4];
+                        const Icon = cat.icon;
+                        return (
+                           <div key={exp.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex justify-between items-center group">
+                              <div className="flex items-center gap-3">
+                                 <div className={`w-10 h-10 rounded-xl ${cat.color} flex items-center justify-center`}>
+                                    <Icon size={18} />
+                                 </div>
+                                 <div>
+                                    <p className="font-bold text-slate-700 text-sm">{exp.description}</p>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase">
+                                      <span className="text-violet-500">{getMemberName(exp.paidBy)}</span> paid
+                                    </p>
+                                 </div>
+                              </div>
+                              <div className="text-right">
+                                 <p className="font-black text-slate-700">₹{exp.amount.toLocaleString()}</p>
+                                 <button 
+                                   onClick={() => deleteExpense(exp.id)}
+                                   className="text-[10px] text-rose-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity"
+                                 >
+                                   Delete
+                                 </button>
+                              </div>
+                           </div>
+                        )
+                      })
+                   )}
+                </div>
+             </div>
+          )}
+
+          {/* TAB: SETTLEMENT */}
+          {activeTab === 'settle' && (
+             <div className="space-y-6 animate-in slide-in-from-bottom-4 fade-in duration-500">
+                
+                {/* Filters */}
+                <div className="flex bg-slate-200/50 p-1 rounded-xl">
+                    {['all', 'major', 'daily'].map(f => (
+                       <button 
+                         key={f}
+                         onClick={() => setSettleFilter(f)}
+                         className={`flex-1 py-2 text-xs font-bold uppercase rounded-lg transition-all
+                           ${settleFilter === f ? 'bg-white shadow-sm text-violet-600' : 'text-slate-500'}`}
+                       >
+                         {f}
+                       </button>
+                    ))}
+                </div>
+
+                {/* Net Balances */}
+                <div className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 overflow-hidden">
+                   <div className="bg-slate-50 px-5 py-3 border-b border-slate-100">
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Net Balances</h3>
+                   </div>
+                   <div className="divide-y divide-slate-50">
+                      {Object.entries(
+                          settleFilter === 'major' ? summary.majorBal : 
+                          settleFilter === 'daily' ? summary.dailyBal : 
+                          summary.globalBal
+                      ).map(([uid, bal]) => {
+                         if (Math.abs(bal) < 1) return null;
+                         const isPos = bal > 0;
+                         return (
+                            <div key={uid} className="flex justify-between items-center p-4">
+                               <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center font-bold text-xs">
+                                     {getMemberName(uid).charAt(0)}
+                                  </div>
+                                  <span className="font-bold text-slate-700 text-sm">{getMemberName(uid)}</span>
+                               </div>
+                               <div className="text-right">
+                                  <p className={`font-black ${isPos ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                    {isPos ? '+' : ''}{Math.round(bal).toLocaleString()}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 font-bold uppercase">
+                                    {isPos ? 'Gets Back' : 'Owes'}
+                                  </p>
+                               </div>
+                            </div>
+                         )
+                      })}
+                   </div>
+                </div>
+
+                {/* Plan */}
+                <div>
+                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-2 mb-3">Transactions</h3>
+                   <div className="space-y-3">
+                      {settlementPlan.length === 0 ? (
+                         <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-2xl text-center">
+                            <CheckCircle className="mx-auto text-emerald-500 mb-2" size={24}/>
+                            <p className="font-bold text-emerald-800">All Settled Up!</p>
+                         </div>
+                      ) : (
+                         settlementPlan.map((tx, i) => (
+                            <div key={i} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between relative overflow-hidden">
+                               <div className={`absolute left-0 top-0 bottom-0 w-1 ${settleFilter === 'daily' ? 'bg-orange-500' : 'bg-blue-500'}`}></div>
+                               
+                               <div className="flex items-center gap-2 flex-1">
+                                  <div className="text-center min-w-[3rem]">
+                                     <div className="w-8 h-8 rounded-full bg-slate-100 mx-auto mb-1 flex items-center justify-center font-bold text-xs text-slate-500">{tx.fromName.charAt(0)}</div>
+                                     <p className="text-[10px] font-bold text-slate-600 truncate max-w-[4rem]">{tx.fromName}</p>
+                                  </div>
+                                  
+                                  <div className="flex-1 text-center">
+                                     <ArrowRight size={14} className="mx-auto text-slate-300"/>
+                                     <p className="text-[9px] font-bold text-slate-400 uppercase">PAYS</p>
+                                  </div>
+
+                                  <div className="text-center min-w-[3rem]">
+                                     <div className="w-8 h-8 rounded-full bg-slate-100 mx-auto mb-1 flex items-center justify-center font-bold text-xs text-slate-500">{tx.toName.charAt(0)}</div>
+                                     <p className="text-[10px] font-bold text-slate-600 truncate max-w-[4rem]">{tx.toName}</p>
+                                  </div>
+                               </div>
+
+                               <div className="pl-4 border-l border-slate-100">
+                                  <p className="text-lg font-black text-slate-700">₹{Math.round(tx.amount).toLocaleString()}</p>
+                               </div>
+                            </div>
+                         ))
+                      )}
+                   </div>
+                </div>
+             </div>
+          )}
+
+        </main>
+
+        {/* BOTTOM NAV */}
+        <nav className="bg-white/90 backdrop-blur-md border-t border-slate-200 flex pb-safe pt-1 z-30 fixed bottom-0 w-full max-w-md">
+           <TabButton id="friends" label="People" icon={Users} active={activeTab} set={setActiveTab}/>
+           <TabButton id="expenses" label="Expenses" icon={Receipt} active={activeTab} set={setActiveTab}/>
+           <TabButton id="settle" label="Settle" icon={ArrowRightLeft} active={activeTab} set={setActiveTab}/>
+        </nav>
+      </div>
+    </div>
+  );
+}
+
+// --- SUB-COMPONENTS ---
+const TabButton = ({ id, label, icon: Icon, active, set }) => (
+  <button 
+    onClick={() => set(id)} 
+    className={`flex-1 py-3 flex flex-col items-center justify-center transition-colors
+      ${active === id ? 'text-violet-600' : 'text-slate-400 hover:text-slate-600'}`}
+  >
+    <div className={`p-1 rounded-xl mb-1 ${active === id ? 'bg-violet-100' : ''}`}>
+       <Icon size={20} strokeWidth={active === id ? 2.5 : 2} />
+    </div>
+    <span className="text-[10px] font-bold">{label}</span>
+  </button>
+);

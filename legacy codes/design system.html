@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-token="page_title">Dashboard - Overview</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Tailwind Config for Dark Mode -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        dark: {
+                            bg: '#0f172a',
+                            card: '#1e293b',
+                            text: '#f8fafc',
+                            muted: '#94a3b8'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* Smooth color transition */
+        body, div, span, nav, header, footer, button {
+            transition-property: background-color, border-color, color, fill, stroke;
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+            transition-duration: 300ms;
+        }
+        
+        /* Custom Scrollbar for dark mode polish */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .dark ::-webkit-scrollbar-thumb {
+            background: #475569;
+        }
+        .dark ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 dark:bg-dark-bg dark:text-dark-text min-h-screen flex flex-col font-sans">
+
+    <!-- Navbar -->
+    <nav class="sticky top-0 z-50 bg-white/80 dark:bg-dark-card/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-700">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <!-- Logo -->
+                <div class="flex items-center gap-2">
+                    <div class="bg-primary text-white p-2 rounded-lg shadow-lg shadow-blue-500/30">
+                        <i data-lucide="layout-dashboard" class="w-6 h-6"></i>
+                    </div>
+                    <span class="font-bold text-xl tracking-tight">Nexus<span class="text-primary">Dash</span></span>
+                </div>
+
+                <!-- Right Side Actions -->
+                <div class="flex items-center gap-4">
+                    <button class="p-2 rounded-full text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 transition-colors hidden sm:block">
+                        <i data-lucide="bell" class="w-5 h-5"></i>
+                    </button>
+                    
+                    <!-- Dark Mode Toggle -->
+                    <button id="theme-toggle" class="p-2 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-yellow-400 hover:ring-2 ring-primary/50 transition-all" aria-label="Toggle Dark Mode">
+                        <i data-lucide="sun" class="w-5 h-5 hidden dark:block"></i>
+                        <i data-lucide="moon" class="w-5 h-5 block dark:hidden"></i>
+                    </button>
+
+                    <!-- Avatar -->
+                    <div class="h-9 w-9 rounded-full bg-gradient-to-tr from-blue-400 to-purple-500 p-[2px] cursor-pointer">
+                        <div class="h-full w-full rounded-full bg-white dark:bg-gray-800 flex items-center justify-center overflow-hidden">
+                            <!-- Token: Avatar Seed/URL -->
+                            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" 
+                                 data-token-src="user_avatar_url" 
+                                 alt="User" 
+                                 class="h-full w-full">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        
+        <!-- Welcome Section -->
+        <div class="mb-8">
+            <!-- Token: User Name -->
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                Welcome back, <span data-token="user_first_name">Alex</span>! 👋
+            </h1>
+            <p class="text-gray-500 dark:text-dark-muted">Here's what's happening with your projects today.</p>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            
+            <!-- Stat Card 1 -->
+            <div class="bg-white dark:bg-dark-card rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400">
+                        <i data-lucide="trending-up" class="w-6 h-6"></i>
+                    </div>
+                    <span class="text-xs font-medium px-2 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded-full" 
+                          data-token="stat_1_change">+12.5%</span>
+                </div>
+                <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-1" 
+                    data-token="stat_1_value">$24,500</h3>
+                <p class="text-sm text-gray-500 dark:text-dark-muted" 
+                   data-token="stat_1_label">Total Revenue</p>
+            </div>
+
+            <!-- Stat Card 2 -->
+            <div class="bg-white dark:bg-dark-card rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="p-3 bg-purple-50 dark:bg-purple-900/30 rounded-lg text-purple-600 dark:text-purple-400">
+                        <i data-lucide="users" class="w-6 h-6"></i>
+                    </div>
+                    <span class="text-xs font-medium px-2 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded-full" 
+                          data-token="stat_2_change">+4.2%</span>
+                </div>
+                <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-1" 
+                    data-token="stat_2_value">1,234</h3>
+                <p class="text-sm text-gray-500 dark:text-dark-muted" 
+                   data-token="stat_2_label">Active Users</p>
+            </div>
+
+            <!-- Stat Card 3 -->
+            <div class="bg-white dark:bg-dark-card rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="p-3 bg-orange-50 dark:bg-orange-900/30 rounded-lg text-orange-600 dark:text-orange-400">
+                        <i data-lucide="shopping-bag" class="w-6 h-6"></i>
+                    </div>
+                    <span class="text-xs font-medium px-2 py-1 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 rounded-full" 
+                          data-token="stat_3_change">-2.1%</span>
+                </div>
+                <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-1" 
+                    data-token="stat_3_value">456</h3>
+                <p class="text-sm text-gray-500 dark:text-dark-muted" 
+                   data-token="stat_3_label">New Orders</p>
+            </div>
+
+            <!-- Stat Card 4 -->
+            <div class="bg-white dark:bg-dark-card rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="p-3 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg text-emerald-600 dark:text-emerald-400">
+                        <i data-lucide="activity" class="w-6 h-6"></i>
+                    </div>
+                    <span class="text-xs font-medium px-2 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded-full" 
+                          data-token="stat_4_change">+8.4%</span>
+                </div>
+                <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-1" 
+                    data-token="stat_4_value">98.2%</h3>
+                <p class="text-sm text-gray-500 dark:text-dark-muted" 
+                   data-token="stat_4_label">Server Uptime</p>
+            </div>
+        </div>
+
+        <!-- Content Split -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            <!-- Main Chart Area -->
+            <div class="lg:col-span-2 bg-white dark:bg-dark-card rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-lg font-bold text-gray-900 dark:text-white">Revenue Overview</h2>
+                    <button class="text-sm text-primary hover:text-blue-600 font-medium">View Report</button>
+                </div>
+                
+                <!-- Chart Container -->
+                <div class="h-64 w-full flex items-end justify-between gap-2 px-2">
+                    
+                    <!-- Jan Bar: Style Token -->
+                    <div class="w-full bg-blue-100 dark:bg-blue-900/20 rounded-t-lg hover:bg-blue-200 dark:hover:bg-blue-800/30 transition-all cursor-pointer relative group" 
+                         style="height: 40%" 
+                         data-token-style="height: {{chart_jan}}%">
+                        <div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity">Jan</div>
+                    </div>
+
+                    <!-- Feb Bar -->
+                    <div class="w-full bg-blue-100 dark:bg-blue-900/20 rounded-t-lg hover:bg-blue-200 dark:hover:bg-blue-800/30 transition-all cursor-pointer relative group" 
+                         style="height: 65%" 
+                         data-token-style="height: {{chart_feb}}%">
+                        <div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity">Feb</div>
+                    </div>
+
+                    <!-- Mar Bar -->
+                    <div class="w-full bg-blue-100 dark:bg-blue-900/20 rounded-t-lg hover:bg-blue-200 dark:hover:bg-blue-800/30 transition-all cursor-pointer relative group" 
+                         style="height: 50%" 
+                         data-token-style="height: {{chart_mar}}%">
+                        <div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity">Mar</div>
+                    </div>
+
+                    <!-- Apr Bar -->
+                    <div class="w-full bg-blue-100 dark:bg-blue-900/20 rounded-t-lg hover:bg-blue-200 dark:hover:bg-blue-800/30 transition-all cursor-pointer relative group" 
+                         style="height: 80%" 
+                         data-token-style="height: {{chart_apr}}%">
+                        <div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity">Apr</div>
+                    </div>
+
+                    <!-- May Bar (Active) -->
+                    <div class="w-full bg-primary rounded-t-lg shadow-lg shadow-blue-500/20 relative group" 
+                         style="height: 95%" 
+                         data-token-style="height: {{chart_may}}%">
+                        <div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity">May</div>
+                    </div>
+
+                    <!-- Jun Bar -->
+                    <div class="w-full bg-blue-100 dark:bg-blue-900/20 rounded-t-lg hover:bg-blue-200 dark:hover:bg-blue-800/30 transition-all cursor-pointer relative group" 
+                         style="height: 60%" 
+                         data-token-style="height: {{chart_jun}}%">
+                         <div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity">Jun</div>
+                    </div>
+                </div>
+                <div class="flex justify-between mt-4 text-xs text-gray-400 dark:text-gray-500">
+                    <span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span class="font-bold text-primary">May</span><span>Jun</span>
+                </div>
+            </div>
+
+            <!-- Recent Activity List -->
+            <!-- Container tagged for loop -->
+            <div class="bg-white dark:bg-dark-card rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700" 
+                 data-loop="activities">
+                <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-6">Recent Activity</h2>
+                <div class="space-y-6">
+                    
+                    <!-- 1. TEMPLATE ITEM (Use this for backend loop) -->
+                    <div class="flex gap-4" data-template>
+                        <!-- Token: Dynamic Class -->
+                        <div class="mt-1 h-2 w-2 rounded-full bg-blue-500 shrink-0" 
+                             data-token-class="{{activity.color_class}}"></div>
+                        <div>
+                            <!-- Token: Description -->
+                            <p class="text-sm text-gray-800 dark:text-gray-200 font-medium" 
+                               data-token="activity.description">New project "Apollo" created</p>
+                            <!-- Token: Time -->
+                            <p class="text-xs text-gray-400 mt-1" 
+                               data-token="activity.time">2 hours ago</p>
+                        </div>
+                    </div>
+
+                    <!-- 2. VISUAL PREVIEW ITEMS (Ignore in backend) -->
+                    <div class="flex gap-4" data-preview-only>
+                        <div class="mt-1 h-2 w-2 rounded-full bg-green-500 shrink-0"></div>
+                        <div>
+                            <p class="text-sm text-gray-800 dark:text-gray-200 font-medium">Server maintenance completed</p>
+                            <p class="text-xs text-gray-400 mt-1">4 hours ago</p>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-4" data-preview-only>
+                        <div class="mt-1 h-2 w-2 rounded-full bg-orange-500 shrink-0"></div>
+                        <div>
+                            <p class="text-sm text-gray-800 dark:text-gray-200 font-medium">Meeting with design team</p>
+                            <p class="text-xs text-gray-400 mt-1">Yesterday</p>
+                        </div>
+                    </div>
+
+                </div>
+                <button class="w-full mt-8 py-2 text-sm text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                    View All Activity
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="mt-auto border-t border-gray-200 dark:border-gray-800 py-8 bg-white dark:bg-dark-card transition-colors">
+        <div class="max-w-7xl mx-auto px-4 text-center text-sm text-gray-500 dark:text-gray-400">
+            &copy; 2024 NexusDash Inc. All rights reserved.
+        </div>
+    </footer>
+
+    <!-- Logic -->
+    <script>
+        // Initialize Icons
+        lucide.createIcons();
+
+        // Theme Toggle Logic
+        const toggleBtn = document.getElementById('theme-toggle');
+        const htmlElement = document.documentElement;
+
+        // Check Local Storage or System Preference on Load
+        const savedTheme = localStorage.getItem('theme');
+        const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+        if (savedTheme === 'dark' || (!savedTheme && systemPrefersDark)) {
+            htmlElement.classList.add('dark');
+        } else {
+            htmlElement.classList.remove('dark');
+        }
+
+        // Toggle Event
+        toggleBtn.addEventListener('click', () => {
+            if (htmlElement.classList.contains('dark')) {
+                htmlElement.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                htmlElement.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+        });
+    </script>
+</body>
+</html>

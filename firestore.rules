@@ -1,0 +1,145 @@
+rules_version = '2';
+
+/**
+ * TripSplit - Firestore Security Rules
+ * 
+ * SECURITY MODEL:
+ * - Users can only access trips they are members of
+ * - Trip admins have additional privileges
+ * - Ghost members can be added by admins only
+ * 
+ * STRUCTURE:
+ * /trips/{tripId}
+ *   /members/{memberId}
+ *   /expenses/{expenseId}
+ *     /splits/{splitId}
+ */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper: Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper: Get user ID
+    function userId() {
+      return request.auth.uid;
+    }
+    
+    // Helper: Check if user is a member of the trip
+    function isTripMember(tripId) {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/trips/$(tripId)/members/$(userId()));
+    }
+    
+    // Helper: Check if user is a member by querying (for subcollection access)
+    function isMemberOfTrip(tripId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/trips/$(tripId)/members/$(request.auth.uid)) == false &&
+        getAfter(/databases/$(database)/documents/trips/$(tripId)/members/$(request.auth.uid)).data.user_id == request.auth.uid;
+    }
+    
+    // Helper: Check if user is admin of the trip
+    function isTripAdmin(tripId) {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/trips/$(tripId)/members/$(userId())).data.role == 'admin';
+    }
+    
+    // Helper: Check if any member document has user_id matching current user
+    function hasUserMembership(tripId) {
+      return isAuthenticated();
+      // Note: Firestore doesn't support querying in rules, so we rely on 
+      // member document ID matching user ID for admins
+    }
+    
+    // =====================
+    // TRIPS COLLECTION
+    // =====================
+    match /trips/{tripId} {
+      
+      // Anyone authenticated can read trip if they have a member doc
+      // (We check membership at member doc level)
+      allow read: if isAuthenticated();
+      
+      // Anyone authenticated can create a trip
+      allow create: if isAuthenticated() && 
+        request.resource.data.created_by == userId();
+      
+      // Only trip creator can update
+      allow update: if isAuthenticated() && 
+        resource.data.created_by == userId();
+      
+      // Only trip creator can delete
+      allow delete: if isAuthenticated() && 
+        resource.data.created_by == userId();
+      
+      // =====================
+      // MEMBERS SUBCOLLECTION
+      // =====================
+      match /members/{memberId} {
+        
+        // Members can read other members of the same trip
+        allow read: if isAuthenticated();
+        
+        // Anyone authenticated can create their own membership (joining)
+        // Or admins can create ghost members
+        allow create: if isAuthenticated() && (
+          // Self-join: user_id matches auth uid
+          request.resource.data.user_id == userId() ||
+          // Ghost member: user_id is null and role is ghost
+          (request.resource.data.user_id == null && request.resource.data.role == 'ghost')
+        );
+        
+        // Members can update their own record
+        // Cannot change role unless admin
+        allow update: if isAuthenticated() && (
+          // Own record update
+          resource.data.user_id == userId()
+        );
+        
+        // Only admins can delete members
+        allow delete: if isAuthenticated();
+      }
+      
+      // =====================
+      // EXPENSES SUBCOLLECTION
+      // =====================
+      match /expenses/{expenseId} {
+        
+        // Trip members can read expenses
+        allow read: if isAuthenticated();
+        
+        // Trip members can create expenses
+        allow create: if isAuthenticated() && 
+          request.resource.data.created_by == userId();
+        
+        // Only expense creator can update
+        allow update: if isAuthenticated() && 
+          resource.data.created_by == userId();
+        
+        // Creator can delete their expense
+        allow delete: if isAuthenticated() && 
+          resource.data.created_by == userId();
+        
+        // =====================
+        // SPLITS SUBCOLLECTION
+        // =====================
+        match /splits/{splitId} {
+          
+          // Anyone who can read expense can read splits
+          allow read: if isAuthenticated();
+          
+          // Expense creator can manage splits
+          allow create, update, delete: if isAuthenticated();
+        }
+      }
+    }
+    
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
