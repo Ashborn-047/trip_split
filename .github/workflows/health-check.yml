@@ -31,6 +31,7 @@ jobs:
           node -e "
           const firebase = require('firebase/compat/app');
           require('firebase/compat/firestore');
+          const fs = require('fs');
           
           async function healthCheck() {
             try {
@@ -48,9 +49,17 @@ jobs:
               const latency = Date.now() - start;
               console.log('STATUS=healthy');
               console.log('LATENCY=' + latency + 'ms');
+              
+              // Write to GitHub Output
+              if (process.env.GITHUB_OUTPUT) {
+                fs.appendFileSync(process.env.GITHUB_OUTPUT, 'latency=' + latency + 'ms\n');
+              }
             } catch (error) {
               console.log('STATUS=unhealthy');
               console.log('ERROR=' + error.message);
+              if (process.env.GITHUB_OUTPUT) {
+                fs.appendFileSync(process.env.GITHUB_OUTPUT, 'error_msg=' + error.message + '\n');
+              }
               process.exit(1);
             }
           }
@@ -62,17 +71,23 @@ jobs:
         if: success()
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          LATENCY: ${{ steps.health.outputs.latency }}
         run: |
           curl -H "Content-Type: application/json" \
             -d '{
               "embeds": [{
-                "title": "✅ TripSplit Health Check",
-                "description": "Firebase database is **healthy** and responding.",
-                "color": 5763719,
+                "title": "🛡️ TripSplit System Pulse",
+                "description": "The Firebase Infrastructure is **fully operational** and responding with optimal performance.",
+                "color": 3066993,
                 "fields": [
-                  {"name": "Status", "value": "Online", "inline": true},
-                  {"name": "Project", "value": "TripSplit", "inline": true}
+                  {"name": "📡 Status", "value": "`Online`", "inline": true},
+                  {"name": "⚡ Latency", "value": "`'"$LATENCY"'`", "inline": true},
+                  {"name": "📁 Project", "value": "trip-split-v1", "inline": true}
                 ],
+                "footer": {
+                  "text": "Automated Pulse • Next check in 12 hours",
+                  "icon_url": "https://cdn-icons-png.flaticon.com/512/3119/3119338.png"
+                },
                 "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
               }]
             }' \
@@ -82,17 +97,22 @@ jobs:
         if: failure()
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          ERROR_MSG: ${{ steps.health.outputs.error_msg }}
         run: |
           curl -H "Content-Type: application/json" \
             -d '{
               "embeds": [{
-                "title": "❌ TripSplit Health Check Failed",
-                "description": "Firebase database is **not responding**. Check the project status.",
-                "color": 15548997,
+                "title": "🚨 CRITICAL: Database Offline",
+                "description": "Emergency alert! The TripSplit database failed its health check. Immediate investigation required.",
+                "color": 15158332,
                 "fields": [
-                  {"name": "Status", "value": "Offline/Error", "inline": true},
-                  {"name": "Action Required", "value": "Check Firebase Console", "inline": true}
+                  {"name": "❌ Error Type", "value": "Firestore Connection Timeout", "inline": true},
+                  {"name": "⚠️ Message", "value": "`'"${ERROR_MSG:-Unknown Error}"'`", "inline": false}
                 ],
+                "footer": {
+                  "text": "System Alert • Manual intervention needed",
+                  "icon_url": "https://cdn-icons-png.flaticon.com/512/564/564619.png"
+                },
                 "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
               }]
             }' \
