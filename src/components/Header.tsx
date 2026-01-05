@@ -31,38 +31,38 @@ export default function Header({ trip, totalSpent, memberCount, onLeaveTrip }: H
     };
 
     return (
-        <header className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white pt-12 pb-6 px-4">
+        <header className="bg-gradient-primary text-white header-safe pb-6 px-4">
             {/* Top Row */}
             <div className="flex items-center justify-between mb-4">
                 <h1 className="text-xl font-bold truncate flex-1 mr-2">{trip.name}</h1>
                 <div className="flex items-center gap-2">
                     <button
                         onClick={handleCopyCode}
-                        className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full text-sm transition-all"
+                        className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full text-xs sm:text-sm transition-all truncate max-w-[120px] sm:max-w-none"
                     >
-                        {copied ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
+                        {copied ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4 text-white/80" />}
                         <span className="font-mono font-medium">{trip.code}</span>
                     </button>
                     <button
                         onClick={onLeaveTrip}
-                        className="p-2 hover:bg-white/20 rounded-full transition-all"
+                        className="p-2 hover:bg-white/20 rounded-full transition-all flex-shrink-0"
                         title="Leave trip"
                     >
-                        <LogOut className="w-5 h-5" />
+                        <LogOut className="w-5 h-5 text-white/80" />
                     </button>
                 </div>
             </div>
 
             {/* Stats Row */}
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4 sm:gap-6">
                 <div>
-                    <p className="text-white/70 text-xs uppercase tracking-wide">Total Spent</p>
-                    <p className="text-2xl font-bold">{formatCurrency(totalSpent)}</p>
+                    <p className="text-white/70 text-[10px] sm:text-xs uppercase tracking-wider font-medium">Total Spent</p>
+                    <p className="text-xl sm:text-2xl font-bold">{formatCurrency(totalSpent)}</p>
                 </div>
-                <div className="h-10 w-px bg-white/20"></div>
+                <div className="h-8 w-px bg-white/20"></div>
                 <div>
-                    <p className="text-white/70 text-xs uppercase tracking-wide">Members</p>
-                    <p className="text-2xl font-bold">{memberCount}</p>
+                    <p className="text-white/70 text-[10px] sm:text-xs uppercase tracking-wider font-medium">Members</p>
+                    <p className="text-xl sm:text-2xl font-bold">{memberCount}</p>
                 </div>
             </div>
         </header>

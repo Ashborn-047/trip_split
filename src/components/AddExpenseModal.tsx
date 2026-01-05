@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { TripMember, ExpenseCategory, ExpenseType } from '../types';
 import { createExpense } from '../services/expenseService';
-import { X, Camera, Loader2, Plane, UtensilsCrossed, Home, Sparkles, MoreHorizontal } from 'lucide-react';
+import { X, Camera, Loader2, Plane, UtensilsCrossed, Home, Sparkles, MoreHorizontal, Users, PencilLine } from 'lucide-react';
 import { scanReceipt, fileToBase64 } from '../services/geminiService';
 
 interface AddExpenseModalProps {
@@ -25,13 +25,21 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
     const [category, setCategory] = useState<ExpenseCategory>('other');
     const [type, setType] = useState<ExpenseType>('daily');
     const [paidBy, setPaidBy] = useState(() => {
-        // Default to current user's member ID
         const currentMember = members.find(m => m.user_id === currentUserId);
         return currentMember?.id || '';
     });
+
+    // Splitting Logic
+    const [splitType, setSplitType] = useState<'equal' | 'custom'>('equal');
+    const [customSplits, setCustomSplits] = useState<Record<string, string>>({});
+
     const [saving, setSaving] = useState(false);
     const [scanning, setScanning] = useState(false);
     const [error, setError] = useState('');
+
+    const amountNum = parseFloat(amount) || 0;
+    const splitTotal = Object.values(customSplits).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+    const remaining = amountNum - splitTotal;
 
     const handleScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -45,7 +53,6 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
             const result = await scanReceipt(data, mimeType);
 
             if (result) {
-                // AI output is a DRAFT - user must confirm
                 setAmount(result.amount.toString());
                 setDescription(result.description);
                 setCategory(result.category);
@@ -60,6 +67,13 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
         }
     };
 
+    const handleCustomSplitChange = (memberId: string, value: string) => {
+        setCustomSplits(prev => ({
+            ...prev,
+            [memberId]: value
+        }));
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -68,8 +82,7 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
             return;
         }
 
-        const amountNum = parseFloat(amount);
-        if (isNaN(amountNum) || amountNum <= 0) {
+        if (amountNum <= 0) {
             setError('Please enter a valid amount');
             return;
         }
@@ -79,10 +92,24 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
             return;
         }
 
+        if (splitType === 'custom') {
+            if (Math.abs(remaining) > 0.01) {
+                setError(`Custom split total must match the expense amount. Remaining: ₹${remaining.toFixed(2)}`);
+                return;
+            }
+        }
+
         setSaving(true);
         setError('');
 
         try {
+            const custom_splits = splitType === 'custom'
+                ? members.map(m => ({
+                    member_id: m.id,
+                    amount: parseFloat(customSplits[m.id]) || 0
+                }))
+                : undefined;
+
             await createExpense({
                 trip_id: tripId,
                 description: description.trim(),
@@ -90,7 +117,8 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
                 category,
                 type,
                 paid_by: paidBy,
-                split_type: 'equal', // Default to equal split
+                split_type: splitType,
+                custom_splits,
                 ai_confirmed: true,
             }, currentUserId);
 
@@ -103,24 +131,36 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
-            <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-end justify-center px-safe">
+            {/* Backdrop */}
+            <div
+                className="absolute inset-0 bottom-sheet-backdrop animate-fade-in"
+                onClick={onClose}
+            />
+
+            {/* Sheet */}
+            <div className="bottom-sheet w-full max-w-lg max-h-[92dvh] flex flex-col z-10 relative">
+                <div className="bottom-sheet-handle flex-shrink-0" />
+
                 {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white">
-                    <h2 className="text-lg font-semibold">Add Expense</h2>
+                <div className="flex items-center justify-between p-4 border-b">
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-900">Add Expense</h2>
+                        <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Capture Every Spent</p>
+                    </div>
                     <button
                         onClick={onClose}
                         className="p-2 hover:bg-gray-100 rounded-full transition-colors"
                     >
-                        <X className="w-5 h-5" />
+                        <X className="w-6 h-6 text-gray-400" />
                     </button>
                 </div>
 
-                {/* Form */}
-                <form onSubmit={handleSubmit} className="p-4 space-y-4">
-                    {/* Scan Receipt */}
-                    <div>
-                        <label className="relative flex items-center justify-center gap-2 border-2 border-dashed border-gray-200 rounded-xl py-4 hover:border-violet-400 transition-colors cursor-pointer">
+                {/* Scrollable Form */}
+                <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6 pb-12">
+                    {/* Scan Section */}
+                    <div className="grid grid-cols-1 gap-4">
+                        <label className="relative flex items-center justify-center gap-3 border-2 border-dashed border-gray-100 rounded-2xl py-6 hover:border-violet-300 hover:bg-violet-50/30 transition-all cursor-pointer group">
                             <input
                                 type="file"
                                 accept="image/*"
@@ -129,51 +169,61 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
                                 className="absolute inset-0 opacity-0 cursor-pointer"
                                 disabled={scanning}
                             />
-                            {scanning ? (
-                                <Loader2 className="w-5 h-5 text-violet-600 animate-spin" />
-                            ) : (
-                                <Camera className="w-5 h-5 text-gray-400" />
-                            )}
-                            <span className="text-gray-600 text-sm">
-                                {scanning ? 'Scanning receipt...' : 'Scan receipt (optional)'}
-                            </span>
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${scanning ? 'bg-violet-100' : 'bg-gray-50 group-hover:bg-violet-100'}`}>
+                                {scanning ? (
+                                    <Loader2 className="w-6 h-6 text-violet-600 animate-spin" />
+                                ) : (
+                                    <Camera className={`w-6 h-6 ${scanning ? 'text-violet-600' : 'text-gray-400 group-hover:text-violet-600'}`} />
+                                )}
+                            </div>
+                            <div className="text-left">
+                                <p className="font-semibold text-gray-900 text-sm">
+                                    {scanning ? 'Analyzing Receipt...' : 'Scan with Gemini AI'}
+                                </p>
+                                <p className="text-xs text-gray-500">Auto-fill amount & category</p>
+                            </div>
                         </label>
                     </div>
 
-                    {/* Description */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Description
-                        </label>
-                        <input
-                            type="text"
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            placeholder="e.g. Lunch at cafe"
-                            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 outline-none"
-                        />
+                    <div className="space-y-4">
+                        {/* Description */}
+                        <div>
+                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 ml-1">
+                                What was it for?
+                            </label>
+                            <input
+                                type="text"
+                                value={description}
+                                onChange={(e) => setDescription(e.target.value)}
+                                placeholder="e.g. Sushi Dinner 🍱"
+                                className="w-full px-5 py-4 rounded-2xl bg-gray-50 border-transparent focus:bg-white focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 transition-all text-lg font-medium outline-none"
+                            />
+                        </div>
+
+                        {/* Amount */}
+                        <div>
+                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 ml-1">
+                                How much?
+                            </label>
+                            <div className="relative group">
+                                <span className="absolute left-5 top-1/2 -translate-y-1/2 text-2xl font-bold text-gray-400 group-focus-within:text-violet-600 transition-colors">₹</span>
+                                <input
+                                    type="number"
+                                    value={amount}
+                                    onChange={(e) => setAmount(e.target.value)}
+                                    placeholder="0"
+                                    className="w-full pl-12 pr-5 py-5 rounded-2xl bg-gray-50 border-transparent focus:bg-white focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 transition-all text-3xl font-bold outline-none"
+                                />
+                            </div>
+                        </div>
                     </div>
 
-                    {/* Amount */}
+                    {/* Category Selection */}
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Amount (₹)
-                        </label>
-                        <input
-                            type="number"
-                            value={amount}
-                            onChange={(e) => setAmount(e.target.value)}
-                            placeholder="0"
-                            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 outline-none text-2xl font-semibold"
-                        />
-                    </div>
-
-                    {/* Category */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">
                             Category
                         </label>
-                        <div className="flex gap-2 flex-wrap">
+                        <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-hide">
                             {categories.map((cat) => {
                                 const Icon = cat.icon;
                                 return (
@@ -181,9 +231,9 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
                                         key={cat.id}
                                         type="button"
                                         onClick={() => setCategory(cat.id)}
-                                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${category === cat.id
-                                            ? 'bg-violet-600 text-white'
-                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        className={`flex items-center gap-2 px-4 py-3 rounded-2xl text-sm font-semibold whitespace-nowrap transition-all' ${category === cat.id
+                                            ? 'bg-violet-600 text-white shadow-lg shadow-violet-200 -translate-y-0.5'
+                                            : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
                                             }`}
                                     >
                                         <Icon className="w-4 h-4" />
@@ -194,74 +244,121 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
                         </div>
                     </div>
 
-                    {/* Type */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Type
-                        </label>
-                        <div className="flex gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setType('major')}
-                                className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2 ${type === 'major'
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-gray-100 text-gray-600'
-                                    }`}
+                    {/* Who Paid & Type Selection */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 ml-1">
+                                Paid By
+                            </label>
+                            <select
+                                value={paidBy}
+                                onChange={(e) => setPaidBy(e.target.value)}
+                                className="w-full px-4 py-3.5 rounded-2xl bg-gray-50 border-transparent focus:bg-white focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 outline-none text-sm font-semibold"
                             >
-                                <Plane className="w-4 h-4" />
-                                Major
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setType('daily')}
-                                className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2 ${type === 'daily'
-                                    ? 'bg-orange-500 text-white'
-                                    : 'bg-gray-100 text-gray-600'
-                                    }`}
-                            >
-                                <UtensilsCrossed className="w-4 h-4" />
-                                Daily
-                            </button>
+                                {members.map((member) => (
+                                    <option key={member.id} value={member.id}>
+                                        {member.display_name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 ml-1">
+                                Weight
+                            </label>
+                            <div className="flex p-1 bg-gray-50 rounded-2xl">
+                                <button
+                                    type="button"
+                                    onClick={() => setType('daily')}
+                                    className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${type === 'daily' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-400'}`}
+                                >
+                                    Daily
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setType('major')}
+                                    className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${type === 'major' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400'}`}
+                                >
+                                    Major
+                                </button>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Paid By */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Paid By
+                    {/* Advanced Splitting Section */}
+                    <div className="pt-2 border-t border-gray-50">
+                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 ml-1">
+                            Splitting Method
                         </label>
-                        <select
-                            value={paidBy}
-                            onChange={(e) => setPaidBy(e.target.value)}
-                            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 outline-none"
-                        >
-                            <option value="">Select member</option>
-                            {members.map((member) => (
-                                <option key={member.id} value={member.id}>
-                                    {member.display_name}
-                                    {member.user_id === currentUserId ? ' (You)' : ''}
-                                </option>
-                            ))}
-                        </select>
+                        <div className="flex gap-2 mb-6">
+                            <button
+                                type="button"
+                                onClick={() => setSplitType('equal')}
+                                className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold transition-all border-2 ${splitType === 'equal'
+                                    ? 'border-violet-600 bg-violet-50 text-violet-700'
+                                    : 'border-gray-50 bg-gray-50 text-gray-500'}`}
+                            >
+                                <Users className="w-4 h-4" />
+                                Equally
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSplitType('custom')}
+                                className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold transition-all border-2 ${splitType === 'custom'
+                                    ? 'border-violet-600 bg-violet-50 text-violet-700'
+                                    : 'border-gray-50 bg-gray-50 text-gray-500'}`}
+                            >
+                                <PencilLine className="w-4 h-4" />
+                                Itemized
+                            </button>
+                        </div>
+
+                        {splitType === 'custom' && (
+                            <div className="space-y-3 bg-gray-50 p-4 rounded-2xl animate-fade-in">
+                                <div className="flex justify-between items-center mb-2 px-1">
+                                    <span className="text-xs font-bold text-gray-500">Member Share</span>
+                                    <span className={`text-xs font-bold ${Math.abs(remaining) < 0.01 ? 'text-success' : 'text-danger'}`}>
+                                        {remaining === 0 ? 'Perfectly split!' : `Left: ₹${remaining.toFixed(2)}`}
+                                    </span>
+                                </div>
+                                {members.map((member) => (
+                                    <div key={member.id} className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-[10px] font-bold text-violet-600 border border-gray-100 flex-shrink-0">
+                                            {member.display_name.charAt(0)}
+                                        </div>
+                                        <span className="flex-1 text-sm font-medium text-gray-700">{member.display_name}</span>
+                                        <div className="relative w-28">
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
+                                            <input
+                                                type="number"
+                                                value={customSplits[member.id] || ''}
+                                                onChange={(e) => handleCustomSplitChange(member.id, e.target.value)}
+                                                placeholder="0"
+                                                className="w-full pl-7 pr-3 py-2.5 rounded-xl border-transparent focus:border-violet-500 outline-none text-sm font-bold"
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
-                    {/* Error */}
+                    {/* Error & Submit */}
                     {error && (
-                        <div className="bg-red-50 text-red-600 px-4 py-3 rounded-xl text-sm">
+                        <div className="bg-red-50 text-red-600 px-4 py-3 rounded-2xl text-sm font-medium border border-red-100">
                             {error}
                         </div>
                     )}
 
-                    {/* Submit */}
                     <button
                         type="submit"
                         disabled={saving}
-                        className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white py-4 rounded-xl font-semibold flex items-center justify-center gap-2 hover:shadow-lg transition-all disabled:opacity-70"
+                        className="w-full bg-gradient-primary text-white py-5 rounded-2xl font-bold text-lg shadow-xl shadow-violet-200 active:scale-95 transition-all disabled:opacity-70 flex items-center justify-center gap-2"
                     >
                         {saving ? (
-                            <Loader2 className="w-5 h-5 animate-spin" />
+                            <Loader2 className="w-6 h-6 animate-spin" />
                         ) : (
-                            'Add Expense'
+                            <>Save Expense</>
                         )}
                     </button>
                 </form>

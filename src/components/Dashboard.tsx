@@ -115,7 +115,7 @@ export default function Dashboard({ user, tripId, onLeaveTrip }: DashboardProps)
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col">
+        <div className="min-h-dvh bg-gray-50 flex flex-col">
             <Header
                 trip={trip}
                 totalSpent={summary.totalSpent}

@@ -206,7 +206,7 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
 }
 
-/* Mobile-specific: prevent zoom on input focus */
+/* Mobile-specific: prevent zoom on input focus and improve tap targets */
 @media (max-width: 767px) {
 
   input,
@@ -214,11 +214,43 @@ textarea:focus {
   textarea {
     font-size: 16px !important;
   }
+
+  button,
+  .tap-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
 
-/* Notch safe zone */
-@supports (padding-top: env(safe-area-inset-top)) {
-  .safe-top {
-    padding-top: calc(env(safe-area-inset-top) + 12px);
-  }
+/* Dynamic Viewport Height (prevents address bar jump) */
+.min-h-dvh {
+  min-height: 100dvh;
+}
+
+/* Bottom Sheet Modal Styles */
+.bottom-sheet-backdrop {
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.bottom-sheet {
+  background: white;
+  border-radius: 24px 24px 0 0;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.1);
+  transform-origin: bottom;
+  animation: slide-in-bottom 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.bottom-sheet-handle {
+  width: 36px;
+  height: 4px;
+  background: #e5e7eb;
+  border-radius: 2px;
+  margin: 12px auto 4px;
+}
+
+/* Notch safe zone header */
+.header-safe {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
 }

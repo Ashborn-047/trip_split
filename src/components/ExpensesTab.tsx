@@ -70,9 +70,9 @@ export default function ExpensesTab({
     };
 
     return (
-        <div className="px-4 py-4">
+        <div className="px-4 py-4 pb-32">
             {/* Filter Pills */}
-            <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+            <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
                 {(['all', 'major', 'daily'] as ExpenseFilter[]).map((f) => (
                     <button
                         key={f}
