@@ -2,8 +2,8 @@ name: Firebase Health Check
 
 on:
   schedule:
-    # Run every 5 days at 9:00 AM UTC to prevent project pause
-    - cron: '0 9 */5 * *'
+    # Run every 12 hours to monitor database health
+    - cron: '0 */12 * * *'
   workflow_dispatch: # Allow manual trigger
 
 jobs:
