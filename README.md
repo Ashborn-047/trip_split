@@ -40,23 +40,17 @@ graph LR
     %% Components
     User((👤 User))
     
-    subgraph App ["TripSplit Frontend"]
-        UI[UI / React]
-        Mut[Mutation Service]
-        LDB[(Local DB Shadow)]
-        Logic{Split Engine}
-    end
+    UI[UI / React]
+    Mut[Mutation Service]
+    LDB[(Local DB Shadow)]
+    Logic{Split Engine}
     
-    subgraph Services ["Cloud Services"]
-        Auth[Firebase Auth]
-        DB[(Firestore)]
-        AI[Gemini AI]
-    end
+    Auth[Firebase Auth]
+    DB[(Firestore)]
+    AI[Gemini AI]
     
-    subgraph Ops ["Monitoring"]
-        CI[GitHub Actions]
-        Alerts[Discord]
-    end
+    CI[GitHub Actions]
+    Alerts[Discord]
     
     %% Flow
     User --> UI
