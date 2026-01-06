@@ -42,6 +42,8 @@ graph LR
     
     subgraph App ["TripSplit Frontend"]
         UI[UI / React]
+        Mut[Mutation Service]
+        LDB[(Local DB Shadow)]
         Logic{Split Engine}
     end
     
@@ -58,16 +60,18 @@ graph LR
     
     %% Flow
     User --> UI
+    UI --> Mut
+    Mut --> LDB
+    Mut --> DB
     UI <--> Logic
-    Logic <--> DB
     UI --- Auth
     UI --- AI
     DB --- CI
     CI --- Alerts
     
     %% Branding
-    class UI,Logic primary;
-    class Auth,DB,AI accent;
+    class UI,Mut,Logic primary;
+    class LDB,Auth,DB,AI accent;
 ```
 
 ### Data Model
@@ -132,18 +136,21 @@ Result:
 ```javascript
 // Users can only access trips they're members of
 match /trips/{tripId} {
-  allow read: if isAuthenticated();
-  allow create: if request.resource.data.created_by == userId();
+  allow read: if isTripMember(tripId);
+  allow update: if isTripAdmin(tripId);
   
   match /members/{memberId} {
-    allow create: if isSelfJoin() || isGhostMember();
-  }
-  
-  match /expenses/{expenseId} {
-    allow create: if isTripMember(tripId);
-    allow delete: if isExpenseCreator();
+    allow read: if isTripMember(tripId);
+    allow write: if isTripAdmin(tripId) || isSelfJoin();
   }
 }
+```
+
+### Sync & Offline Strategy (Sync-Ready)
+- **Local Shadow**: All writes are mirrored to IndexedDB (via Dexie.js) before hitting Firestore.
+- **Single Write Path**: All mutations flow through `mutationService.ts` for consistency.
+- **Conflict Resolution**: Last-write-wins based on `updated_at` server timestamps.
+- **Offline Behavior**: Changes are queued locally and synchronized upon reconnection.
 ```
 
 ### AI Trust Boundary

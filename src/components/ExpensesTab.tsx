@@ -1,7 +1,7 @@
 import type { Expense, TripMember } from '../types';
 import type { ExpenseFilter } from './Dashboard';
 import { Plus, Trash2, Plane, UtensilsCrossed, Home, Sparkles, MoreHorizontal } from 'lucide-react';
-import { deleteExpense } from '../services/expenseService';
+import { mutationService } from '../services/mutationService';
 import { useState } from 'react';
 
 interface ExpensesTabProps {
@@ -53,7 +53,7 @@ export default function ExpensesTab({
 
         setDeletingId(expenseId);
         try {
-            await deleteExpense(tripId, expenseId);
+            await mutationService.deleteExpense(tripId, expenseId);
         } catch (err) {
             console.error('Failed to delete:', err);
         } finally {

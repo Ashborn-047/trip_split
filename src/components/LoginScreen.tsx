@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { User } from 'firebase/auth';
-import { createTrip, joinTrip } from '../services/tripService';
+import { mutationService } from '../services/mutationService';
 import { Plane, Users, Plus, ArrowRight, Loader2 } from 'lucide-react';
 
 interface LoginScreenProps {
@@ -27,11 +27,11 @@ export default function LoginScreen({ user, onTripSelect }: LoginScreenProps) {
         setError('');
 
         try {
-            const { trip } = await createTrip(
+            const { tripId } = await mutationService.createTrip(
                 { name: tripName || `${name}'s Trip`, creatorDisplayName: name },
                 user.uid
             );
-            onTripSelect(trip.id);
+            onTripSelect(tripId);
         } catch (err: any) {
             setError(err.message || 'Failed to create trip');
         } finally {
@@ -54,11 +54,11 @@ export default function LoginScreen({ user, onTripSelect }: LoginScreenProps) {
         setError('');
 
         try {
-            const { trip } = await joinTrip(
+            const { tripId } = await mutationService.joinTrip(
                 { code: tripCode, displayName: name },
                 user.uid
             );
-            onTripSelect(trip.id);
+            onTripSelect(tripId);
         } catch (err: any) {
             setError(err.message || 'Failed to join trip');
         } finally {

@@ -107,6 +107,7 @@ export async function createTrip(
         role: 'admin',
         joined_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        is_ghost: false,
     };
 
     return { trip, membership };
@@ -162,6 +163,7 @@ export async function joinTrip(
                 role: memberData.role,
                 joined_at: toISOString(memberData.joined_at),
                 updated_at: toISOString(memberData.updated_at),
+                is_ghost: memberData.is_ghost || false,
             },
         };
     }
@@ -199,6 +201,7 @@ export async function joinTrip(
             role: 'member',
             joined_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
+            is_ghost: false,
         },
     };
 }
@@ -231,6 +234,7 @@ export async function addGhostMember(
         role: 'ghost',
         joined_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        is_ghost: true,
     };
 }
 
@@ -276,6 +280,7 @@ export async function getTripMembers(tripId: string): Promise<TripMember[]> {
             role: data.role,
             joined_at: toISOString(data.joined_at),
             updated_at: toISOString(data.updated_at),
+            is_ghost: data.is_ghost || false,
         };
     });
 }
@@ -306,6 +311,7 @@ export async function getCurrentUserMembership(
         role: data.role,
         joined_at: toISOString(data.joined_at),
         updated_at: toISOString(data.updated_at),
+        is_ghost: data.is_ghost || false,
     };
 }
 
@@ -365,6 +371,7 @@ export function subscribeToTrip(
                 role: data.role,
                 joined_at: toISOString(data.joined_at),
                 updated_at: toISOString(data.updated_at),
+                is_ghost: data.is_ghost || false,
             };
         });
         onMembersUpdate(members);

@@ -34,7 +34,8 @@ export interface TripMember {
     trip_id: string;       // References trips.id
     user_id: string | null; // NULL for ghost members, else auth.users.id
     display_name: string;
-    role: 'admin' | 'member' | 'ghost';
+    role: MemberRole;
+    is_ghost: boolean;     // True if member has no associated auth user
     joined_at: string;     // ISO timestamp
     updated_at: string;    // ISO timestamp
 }
@@ -47,8 +48,6 @@ export interface Expense {
     category: ExpenseCategory;
     type: ExpenseType;
     expense_date: string;  // ISO date (YYYY-MM-DD)
-    created_at: string;    // ISO timestamp
-    updated_at: string;    // ISO timestamp
     created_by: string;    // References auth.users.id (who added it)
     /**
      * IMPORTANT: References trip_members.id, NOT auth.users.id
@@ -63,6 +62,8 @@ export interface Expense {
      * Set to FALSE when auto-filled by AI, then TRUE after user confirms.
      */
     ai_confirmed: boolean;
+    created_at: string;    // ISO timestamp
+    updated_at: string;    // ISO timestamp
 }
 
 export interface ExpenseSplit {

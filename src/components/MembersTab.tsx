@@ -1,7 +1,7 @@
 import type { TripMember, Summary } from '../types';
 import { UserPlus, Copy, Check, Crown, Ghost, User } from 'lucide-react';
 import { useState } from 'react';
-import { addGhostMember } from '../services/tripService';
+import { mutationService } from '../services/mutationService';
 import { formatBalance } from '../utils/balanceCalculator';
 
 interface MembersTabProps {
@@ -30,7 +30,7 @@ export default function MembersTab({ members, summary, tripCode, tripId, isAdmin
 
         setAdding(true);
         try {
-            await addGhostMember({ trip_id: tripId, display_name: ghostName.trim() });
+            await mutationService.addGhostMember({ trip_id: tripId, display_name: ghostName.trim() });
             setGhostName('');
             setShowAddGhost(false);
         } catch (err) {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { TripMember, ExpenseCategory, ExpenseType } from '../types';
-import { createExpense } from '../services/expenseService';
+import { mutationService } from '../services/mutationService';
 import { X, Camera, Loader2, Plane, UtensilsCrossed, Home, Sparkles, MoreHorizontal, Users, PencilLine } from 'lucide-react';
 import { scanReceipt, fileToBase64 } from '../services/geminiService';
 
@@ -110,7 +110,7 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
                 }))
                 : undefined;
 
-            await createExpense({
+            await mutationService.createExpense({
                 trip_id: tripId,
                 description: description.trim(),
                 amount: amountNum,
