@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
 import type { User } from 'firebase/auth';
 import type { Trip, TripMember, Expense, ExpenseSplit } from '../types';
-import { getTrip, getTripMembers, subscribeToTrip } from '../services/tripService';
-import { getExpenses, subscribeToExpenses, getExpenseSplits } from '../services/expenseService';
+import { getTrip, subscribeToTrip } from '../services/tripService';
+import { SYNC_AUTHORITY_ENABLED } from '../config/flags';
+import { localDb } from '../config/localDb';
+import { syncService } from '../services/syncService';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { calculateSummary } from '../utils/balanceCalculator';
 import Header from './Header';
 import BottomNav from './BottomNav';
@@ -21,10 +24,22 @@ export type TabType = 'expenses' | 'members' | 'settle';
 export type ExpenseFilter = 'all' | 'major' | 'daily';
 
 export default function Dashboard({ user, tripId, onLeaveTrip }: DashboardProps) {
+    // -- LOCAL READ AUTHORITY (Section 3) --
+    // These queries are reactive and update the UI instantly from Dexie
+    const localExpenses = useLiveQuery(() => localDb.expenses.where('trip_id').equals(tripId).toArray(), [tripId]) || [];
+    const localMembers = useLiveQuery(() => localDb.members.where('trip_id').equals(tripId).toArray(), [tripId]) || [];
+    const localSplits = useLiveQuery(() => localDb.splits.toArray()) || []; // Simplified for v1
+
     const [trip, setTrip] = useState<Trip | null>(null);
-    const [members, setMembers] = useState<TripMember[]>([]);
-    const [expenses, setExpenses] = useState<Expense[]>([]);
-    const [splits, setSplits] = useState<ExpenseSplit[]>([]);
+    const [remoteMembers] = useState<TripMember[]>([]);
+    const [remoteExpenses] = useState<Expense[]>([]);
+    const [remoteSplits] = useState<ExpenseSplit[]>([]);
+
+    // Auth-governed data (Cast to satisfy public component interfaces)
+    const expenses = (SYNC_AUTHORITY_ENABLED ? (localExpenses as unknown as Expense[]) : remoteExpenses);
+    const members = (SYNC_AUTHORITY_ENABLED ? (localMembers as unknown as TripMember[]) : remoteMembers);
+    const splits = (SYNC_AUTHORITY_ENABLED ? (localSplits as unknown as ExpenseSplit[]) : remoteSplits);
+
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<TabType>('expenses');
     const [expenseFilter, setExpenseFilter] = useState<ExpenseFilter>('all');
@@ -33,50 +48,34 @@ export default function Dashboard({ user, tripId, onLeaveTrip }: DashboardProps)
     // Fetch initial data and subscribe to updates
     useEffect(() => {
         let unsubTrip: (() => void) | undefined;
-        let unsubExpenses: (() => void) | undefined;
 
         async function init() {
             try {
-                // Fetch initial data
-                const [tripData, membersData, expensesData] = await Promise.all([
-                    getTrip(tripId),
-                    getTripMembers(tripId),
-                    getExpenses(tripId),
-                ]);
-
+                // 1. Fetch Trip Metadata (Always required)
+                const tripData = await getTrip(tripId);
                 if (!tripData) {
                     onLeaveTrip();
                     return;
                 }
-
                 setTrip(tripData);
-                setMembers(membersData);
-                setExpenses(expensesData);
 
-                // Fetch splits for custom expenses
-                const customExpenseIds = expensesData
-                    .filter(e => e.split_type === 'custom')
-                    .map(e => e.id);
-                if (customExpenseIds.length > 0) {
-                    const splitsData = await getExpenseSplits(tripId, customExpenseIds);
-                    setSplits(splitsData);
+                // 2. Hydration & Sync (Fix 2)
+                if (SYNC_AUTHORITY_ENABLED) {
+                    await syncService.initHydration(tripId);
+                    syncService.startSyncLoop(); // Start periodic background sync
                 }
 
                 setLoading(false);
 
-                // Subscribe to real-time updates
+                // 3. Keep Trip Metadata updated
                 unsubTrip = subscribeToTrip(
                     tripId,
                     (updatedTrip) => setTrip(updatedTrip),
                     async () => {
-                        const newMembers = await getTripMembers(tripId);
-                        setMembers(newMembers);
+                        // Trip/Member updates still flow through Legacy for metadata
+                        // But if Sync is on, hydration will catch the data
                     }
                 );
-
-                unsubExpenses = subscribeToExpenses(tripId, (newExpenses) => {
-                    setExpenses(newExpenses);
-                });
 
             } catch (err) {
                 console.error('Failed to load trip:', err);
@@ -88,7 +87,10 @@ export default function Dashboard({ user, tripId, onLeaveTrip }: DashboardProps)
 
         return () => {
             unsubTrip?.();
-            unsubExpenses?.();
+            if (SYNC_AUTHORITY_ENABLED) {
+                syncService.stopSyncLoop();
+                syncService.stopHydration(tripId);
+            }
         };
     }, [tripId, onLeaveTrip]);
 

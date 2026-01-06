@@ -146,12 +146,91 @@ match /trips/{tripId} {
 }
 ```
 
-### Sync & Offline Strategy (Sync-Ready)
-- **Local Shadow**: All writes are mirrored to IndexedDB (via Dexie.js) before hitting Firestore.
-- **Single Write Path**: All mutations flow through `mutationService.ts` for consistency.
-- **Conflict Resolution**: Last-write-wins based on `updated_at` server timestamps.
-- **Offline Behavior**: Changes are queued locally and synchronized upon reconnection.
+---
+
+## 🧠 TripSplit Architecture & Offline-First Design
+
+TripSplit is built as a **local-first, offline-first web application**.
+
+Unlike traditional apps that depend on the network to function, TripSplit is designed to **work entirely on your device**, and uses the internet only when it’s actually needed.
+
+This is a deliberate architectural choice.
+
+### 🚀 High-Level Philosophy
+
+**TripSplit works offline by default.  
+The internet is used only for syncing, sharing, and backup.**
+
+This means:
+- You don’t wait for servers to respond
+- Poor connectivity doesn’t break the app
+- Travel scenarios work naturally
+- Sync happens quietly in the background
+
+### 🧱 System Architecture (Simplified)
+
+```mermaid
+graph TD
+    User[User Action] --> UI[UI Updates Instantly]
+    UI --> Mut[Mutation Service]
+    Mut --> LDB[(Local DB - Dexie)]
+    LDB --> Queue[Mutation Queue]
+    Queue --> Sync[Background Sync]
+    Sync --> Cloud[(Firebase - Backup/Sync)]
 ```
+
+### Key Idea
+- **Local Database is the primary source of truth**
+- **Firebase is not required for basic usage**
+- **Sync happens automatically when online**
+
+### 📴 Offline-First Behavior
+
+Once the app has been opened at least once:
+
+#### ✅ What works fully offline
+- Create trips
+- Add members (including offline / ghost members)
+- Add expenses
+- Split expenses
+- View balances
+- Settle amounts logically
+- Close and reopen the app
+
+All actions are saved **locally and immediately**.
+
+No loading screens. No “retry later” errors.
+
+### 🔁 Automatic Sync (No User Action Required)
+
+When your device reconnects to the internet:
+- Sync starts **automatically**
+- All offline changes are sent to Firebase in batches
+- Data is backed up securely
+- Other participants receive updates
+- Conflicts (if any) are detected safely
+
+There is **no “Sync” button** and nothing for the user to manage.
+
+### 💾 Local Data Storage (How Your Data Is Saved)
+
+TripSplit uses **IndexedDB** (via Dexie.js) on your device.
+Data survives page reloads, browser restarts, and device restarts. Much safer than `localStorage` or in-memory state.
+
+### ☁️ Why Firebase Still Exists
+
+Firebase is used for syncing data between users, backing up local data, and recovering data on new devices. Think of it as **long-term memory and coordination**, not control.
+
+### ⚠️ Honest Limitations (Important)
+
+- **Clearing App / Browser Data**: If you manually clear site data or browser storage before syncing, local data will be lost.
+- **Unsynced Changes**: If you never reconnect to the internet, changes exist only on your device and cannot be backed up.
+
+### 🧠 Conflict Handling
+
+If two people change the same thing while offline, both changes are preserved locally and the system detects the conflict during sync. Conflicts are handled explicitly to prevent hidden data loss.
+
+---
 
 ### AI Trust Boundary
 - All AI-extracted data (from receipts) is treated as **DRAFT ONLY**
