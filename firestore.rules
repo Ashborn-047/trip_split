@@ -116,6 +116,14 @@ service cloud.firestore {
       }
     }
     
+    // =====================
+    // HEALTH CHECK
+    // =====================
+    match /health_check/status {
+      allow read: if true;
+      allow write: if false; // Managed via console or admin
+    }
+
     // Deny all other access
     match /{document=**} {
       allow read, write: if false;

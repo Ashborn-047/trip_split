@@ -29,28 +29,31 @@ jobs:
           FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
         run: |
           node -e "
-          const firebase = require('firebase/compat/app');
-          require('firebase/compat/firestore');
+          const { initializeApp } = require('firebase/app');
+          const { getFirestore, doc, getDoc } = require('firebase/firestore');
           const fs = require('fs');
           
           async function healthCheck() {
             try {
-              const app = firebase.default.initializeApp({
+              const firebaseConfig = {
                 apiKey: process.env.FIREBASE_API_KEY,
                 projectId: process.env.FIREBASE_PROJECT_ID,
-              });
+              };
               
-              const db = app.firestore();
+              const app = initializeApp(firebaseConfig);
+              const db = getFirestore(app);
               const start = Date.now();
               
-              // Simple query to ping the database
-              await db.collection('trips').limit(1).get();
+              // Ping the public health check document
+              const healthDoc = await getDoc(doc(db, 'health_check', 'status'));
+              if (!healthDoc.exists()) {
+                 throw new Error('Health check document not found');
+              }
               
               const latency = Date.now() - start;
               console.log('STATUS=healthy');
               console.log('LATENCY=' + latency + 'ms');
               
-              // Write to GitHub Output
               if (process.env.GITHUB_OUTPUT) {
                 fs.appendFileSync(process.env.GITHUB_OUTPUT, 'latency=' + latency + 'ms\n');
               }
