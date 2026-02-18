@@ -6,7 +6,10 @@ import {
     collection,
     doc,
     writeBatch,
-    serverTimestamp
+    serverTimestamp,
+    query,
+    orderBy,
+    limit
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { localDb } from '../config/localDb';
@@ -14,36 +17,41 @@ import { SYNC_AUTHORITY_ENABLED } from '../config/flags';
 
 class SyncService {
     private unsubscribes: Map<string, () => void> = new Map();
-    private syncInterval: any = null;
+    private syncTimeout: ReturnType<typeof setTimeout> | null = null;
+    private backoffDelay = 0;
+    private isSyncing = false;
 
     /**
      * Starts the periodic background sync engine.
      */
     startSyncLoop() {
         if (!SYNC_AUTHORITY_ENABLED) return;
-        if (this.syncInterval) return;
+        if (this.syncTimeout) return;
 
-        // Process every 30 seconds or when triggered
-        this.syncInterval = setInterval(() => {
-            this.processQueue();
-        }, 30000);
-
-        // Initial process
-        this.processQueue();
+        console.log('[SyncMaster] Starting sync loop...');
+        this.scheduleNextSync(0);
     }
 
     stopSyncLoop() {
-        if (this.syncInterval) {
-            clearInterval(this.syncInterval);
-            this.syncInterval = null;
+        if (this.syncTimeout) {
+            clearTimeout(this.syncTimeout);
+            this.syncTimeout = null;
         }
+    }
+
+    private scheduleNextSync(delay: number) {
+        if (this.syncTimeout) clearTimeout(this.syncTimeout);
+
+        this.syncTimeout = setTimeout(() => {
+            this.processQueue();
+        }, delay);
     }
 
     /**
      * Initializes hydration listeners for a trip.
      * Implements Fix 2: Local-Wins Hydration.
      */
-    async initHydration(tripId: string) {
+    async initHydration(tripId: string, limitCount?: number) {
         if (!SYNC_AUTHORITY_ENABLED) return;
 
         // Cleanup existing
@@ -51,7 +59,13 @@ class SyncService {
 
         // 1. Listen to Expenses
         const expensesRef = collection(db, 'trips', tripId, 'expenses');
-        const unsubExpenses = onSnapshot(expensesRef, async (snapshot) => {
+        let q = query(expensesRef, orderBy('created_at', 'desc'));
+
+        if (limitCount) {
+            q = query(expensesRef, orderBy('created_at', 'desc'), limit(limitCount));
+        }
+
+        const unsubExpenses = onSnapshot(q, async (snapshot) => {
             for (const change of snapshot.docChanges()) {
                 const data = change.doc.data();
                 const expenseId = change.doc.id;
@@ -87,10 +101,6 @@ class SyncService {
             }
         });
 
-        // 2. Listen to Splits (simplified)
-        // In a full implementation, we'd handle splits specifically, 
-        // but for v1, createExpense pushes splits in a batch.
-
         this.unsubscribes.set(tripId, unsubExpenses);
     }
 
@@ -108,38 +118,74 @@ class SyncService {
      */
     async processQueue() {
         if (!SYNC_AUTHORITY_ENABLED) return;
+        if (this.isSyncing) return;
 
-        const mutations = await localDb.mutations.orderBy('client_sequence_number').toArray();
-        if (mutations.length === 0) return;
+        this.isSyncing = true;
 
-        console.log(`[SyncMaster] Processing ${mutations.length} mutations...`);
+        try {
+            const mutations = await localDb.mutations.orderBy('client_sequence_number').toArray();
 
-        for (const mut of mutations) {
-            try {
-                // Support Partial Success (Fix 3)
-                await this.applyMutation(mut);
+            if (mutations.length === 0) {
+                // Nothing to sync, sleep for standard interval
+                this.backoffDelay = 0;
+                this.isSyncing = false;
+                this.scheduleNextSync(30000);
+                return;
+            }
 
-                // ACK (Success)
-                await localDb.mutations.delete(mut.mutation_id);
-                // Mark entity as synced
-                await localDb.expenses.update(mut.entity_id, { sync_status: 'synced' });
+            console.log(`[SyncMaster] Processing ${mutations.length} mutations...`);
 
-                console.log(`[SyncMaster] ACKed mutation: ${mut.mutation_id}`);
-            } catch (err: any) {
-                console.error(`[SyncMaster] Failed mutation ${mut.mutation_id}:`, err);
+            for (const mut of mutations) {
+                try {
+                    // Support Partial Success (Fix 3)
+                    await this.applyMutation(mut);
 
-                if (err.code === 'permission-denied' || err.status === 409) {
-                    // CONFLICT (Fix 3)
-                    await localDb.mutations.update(mut.mutation_id, {
-                        sync_status: 'conflicted',
-                        error: err.message
-                    });
-                    await localDb.expenses.update(mut.entity_id, { sync_status: 'conflicted' });
-                } else {
-                    // TRANSIENT FAILURE (Fix 3) - Stay in queue
-                    break; // stop processing for now (backoff)
+                    // ACK (Success)
+                    await localDb.mutations.delete(mut.mutation_id);
+                    // Mark entity as synced
+                    await localDb.expenses.update(mut.entity_id, { sync_status: 'synced' });
+
+                    console.log(`[SyncMaster] ACKed mutation: ${mut.mutation_id}`);
+
+                    // Reset backoff on success
+                    this.backoffDelay = 0;
+
+                } catch (err: any) {
+                    console.error(`[SyncMaster] Failed mutation ${mut.mutation_id}:`, err);
+
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const e = err as any;
+
+                    if (e.code === 'permission-denied' || e.status === 409) {
+                        // CONFLICT (Fix 3)
+                        await localDb.mutations.update(mut.mutation_id, {
+                            sync_status: 'conflicted',
+                            error: e.message
+                        });
+                        await localDb.expenses.update(mut.entity_id, { sync_status: 'conflicted' });
+                        // Continue to next mutation
+                        continue;
+                    } else {
+                        // TRANSIENT FAILURE (Fix 3) - Backoff
+                        // Calculate next backoff: 2s -> 4s -> 8s -> ... -> 60s
+                        this.backoffDelay = Math.min(60000, Math.max(2000, this.backoffDelay * 2));
+                        console.log(`[SyncMaster] Transient failure. Backing off for ${this.backoffDelay}ms`);
+
+                        this.isSyncing = false;
+                        this.scheduleNextSync(this.backoffDelay);
+                        return; // Stop processing queue for now
+                    }
                 }
             }
+
+            // Queue drained successfully
+            this.isSyncing = false;
+            this.scheduleNextSync(30000); // Standard poll
+
+        } catch (err) {
+            console.error('[SyncMaster] Fatal sync error:', err);
+            this.isSyncing = false;
+            this.scheduleNextSync(30000); // Retry later
         }
     }
 

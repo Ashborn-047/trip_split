@@ -20,7 +20,10 @@ import {
     onSnapshot,
     serverTimestamp,
     writeBatch,
-    type Unsubscribe
+    limit,
+    startAfter,
+    type Unsubscribe,
+    type QueryDocumentSnapshot
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { Expense, ExpenseSplit, CreateExpenseInput } from '../types';
@@ -34,6 +37,26 @@ function toISOString(timestamp: any): string {
     return new Date(timestamp).toISOString();
 }
 
+function mapExpenseDoc(doc: QueryDocumentSnapshot, tripId: string): Expense {
+    const data = doc.data();
+    return {
+        id: doc.id,
+        trip_id: tripId,
+        description: data.description,
+        amount: data.amount,
+        category: data.category || 'other',
+        type: data.type || 'daily',
+        expense_date: data.expense_date || toISOString(data.created_at).split('T')[0],
+        created_at: toISOString(data.created_at),
+        updated_at: toISOString(data.updated_at),
+        created_by: data.created_by,
+        paid_by: data.paid_by, // References member document ID
+        split_type: data.split_type || 'equal',
+        receipt_url: data.receipt_url || null,
+        ai_confirmed: data.ai_confirmed ?? true,
+    };
+}
+
 /**
  * Fetches all expenses for a trip.
  */
@@ -42,25 +65,29 @@ export async function getExpenses(tripId: string): Promise<Expense[]> {
     const expenseQuery = query(expensesRef, orderBy('created_at', 'desc'));
     const snapshot = await getDocs(expenseQuery);
 
-    return snapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-            id: doc.id,
-            trip_id: tripId,
-            description: data.description,
-            amount: data.amount,
-            category: data.category || 'other',
-            type: data.type || 'daily',
-            expense_date: data.expense_date || toISOString(data.created_at).split('T')[0],
-            created_at: toISOString(data.created_at),
-            updated_at: toISOString(data.updated_at),
-            created_by: data.created_by,
-            paid_by: data.paid_by, // References member document ID
-            split_type: data.split_type || 'equal',
-            receipt_url: data.receipt_url || null,
-            ai_confirmed: data.ai_confirmed ?? true,
-        };
-    });
+    return snapshot.docs.map(doc => mapExpenseDoc(doc, tripId));
+}
+
+/**
+ * Fetches expenses with pagination.
+ */
+export async function getExpensesPaginated(
+    tripId: string,
+    limitCount: number = 20,
+    lastVisible: QueryDocumentSnapshot | null = null
+): Promise<{ expenses: Expense[], lastVisible: QueryDocumentSnapshot | null }> {
+    const expensesRef = collection(db, 'trips', tripId, 'expenses');
+    let expenseQuery = query(expensesRef, orderBy('created_at', 'desc'), limit(limitCount));
+
+    if (lastVisible) {
+        expenseQuery = query(expensesRef, orderBy('created_at', 'desc'), startAfter(lastVisible), limit(limitCount));
+    }
+
+    const snapshot = await getDocs(expenseQuery);
+    const last = snapshot.docs[snapshot.docs.length - 1] || null;
+    const expenses = snapshot.docs.map(doc => mapExpenseDoc(doc, tripId));
+
+    return { expenses, lastVisible: last };
 }
 
 /**
@@ -86,6 +113,7 @@ export async function getExpenseSplits(
                 expense_id: expenseId,
                 member_id: data.member_id,
                 amount: data.amount,
+                shares: data.shares,
             });
         });
     }
@@ -108,10 +136,10 @@ export async function createExpense(
         throw new Error('paid_by is required and must reference a trip member');
     }
 
-    // Validate custom splits if provided
-    if (input.split_type === 'custom') {
+    // Validate custom/shares splits if provided
+    if (input.split_type === 'custom' || input.split_type === 'shares') {
         if (!input.custom_splits || input.custom_splits.length === 0) {
-            throw new Error('Custom splits required when split_type is "custom"');
+            throw new Error(`Splits required when split_type is "${input.split_type}"`);
         }
 
         const splitTotal = input.custom_splits.reduce((sum, s) => sum + s.amount, 0);
@@ -141,17 +169,21 @@ export async function createExpense(
 
     const expenseRef = await addDoc(expensesRef, expenseData);
 
-    // Add custom splits if applicable
-    if (input.split_type === 'custom' && input.custom_splits) {
+    // Add custom/shares splits if applicable
+    if ((input.split_type === 'custom' || input.split_type === 'shares') && input.custom_splits) {
         const batch = writeBatch(db);
         const splitsRef = collection(expenseRef, 'splits');
 
         for (const split of input.custom_splits) {
             const splitDocRef = doc(splitsRef);
-            batch.set(splitDocRef, {
+            const data: any = {
                 member_id: split.member_id,
                 amount: split.amount,
-            });
+            };
+            if (split.shares !== undefined) {
+                data.shares = split.shares;
+            }
+            batch.set(splitDocRef, data);
         }
 
         await batch.commit();
@@ -215,31 +247,18 @@ export async function deleteExpense(tripId: string, expenseId: string): Promise<
  */
 export function subscribeToExpenses(
     tripId: string,
-    onExpensesUpdate: (expenses: Expense[]) => void
+    onExpensesUpdate: (expenses: Expense[]) => void,
+    limitCount?: number
 ): Unsubscribe {
     const expensesRef = collection(db, 'trips', tripId, 'expenses');
-    const expenseQuery = query(expensesRef, orderBy('created_at', 'desc'));
+    let expenseQuery = query(expensesRef, orderBy('created_at', 'desc'));
+
+    if (limitCount) {
+        expenseQuery = query(expensesRef, orderBy('created_at', 'desc'), limit(limitCount));
+    }
 
     return onSnapshot(expenseQuery, (snapshot) => {
-        const expenses = snapshot.docs.map(doc => {
-            const data = doc.data();
-            return {
-                id: doc.id,
-                trip_id: tripId,
-                description: data.description,
-                amount: data.amount,
-                category: data.category || 'other',
-                type: data.type || 'daily',
-                expense_date: data.expense_date || toISOString(data.created_at).split('T')[0],
-                created_at: toISOString(data.created_at),
-                updated_at: toISOString(data.updated_at),
-                created_by: data.created_by,
-                paid_by: data.paid_by,
-                split_type: data.split_type || 'equal',
-                receipt_url: data.receipt_url || null,
-                ai_confirmed: data.ai_confirmed ?? true,
-            };
-        });
+        const expenses = snapshot.docs.map(doc => mapExpenseDoc(doc, tripId));
         onExpensesUpdate(expenses);
     });
 }

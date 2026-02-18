@@ -187,7 +187,7 @@ export const mutationService = {
         const mutation_id = generateUUID(); // Fix 1: mutation_id as potential doc ID
 
         // 1. Validation
-        if (input.split_type === 'custom') {
+        if (input.split_type === 'custom' || input.split_type === 'shares') {
             const splitTotal = (input.custom_splits || []).reduce((sum, s) => sum + s.amount, 0);
             if (Math.abs(splitTotal - amount) > 0.01) {
                 throw new Error(`Split total (₹${splitTotal.toFixed(2)}) must equal ₹${amount.toFixed(2)}`);
@@ -219,15 +219,18 @@ export const mutationService = {
             await localDb.expenses.add(expenseData);
 
             const localSplits: any[] = [];
-            if (input.split_type === 'custom' && input.custom_splits) {
+            if ((input.split_type === 'custom' || input.split_type === 'shares') && input.custom_splits) {
                 for (const split of input.custom_splits) {
                     const split_id = generateUUID();
-                    const splitData = {
+                    const splitData: any = {
                         id: split_id,
                         expense_id,
                         member_id: split.member_id,
                         amount: split.amount,
                     };
+                    if (split.shares !== undefined) {
+                        splitData.shares = split.shares;
+                    }
                     await localDb.splits.add(splitData);
                     localSplits.push(splitData);
                 }

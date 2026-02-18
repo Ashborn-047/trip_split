@@ -54,7 +54,7 @@ export interface Expense {
      * This allows both real users and ghost members to be payers.
      */
     paid_by: string;
-    split_type: 'equal' | 'custom';
+    split_type: 'equal' | 'custom' | 'shares';
     receipt_url: string | null;
     /**
      * Indicates if AI-extracted data was reviewed and confirmed by user.
@@ -75,6 +75,7 @@ export interface ExpenseSplit {
      */
     member_id: string;
     amount: number;        // Stored as DECIMAL(12,2), >= 0
+    shares?: number;       // Optional: stored if split_type is 'shares'
 }
 
 export interface SettlementSnapshot {
@@ -189,8 +190,8 @@ export interface CreateExpenseInput {
     category: ExpenseCategory;
     type: ExpenseType;
     paid_by: string;       // trip_members.id
-    split_type: 'equal' | 'custom';
-    custom_splits?: { member_id: string; amount: number }[];
+    split_type: 'equal' | 'custom' | 'shares';
+    custom_splits?: { member_id: string; amount: number; shares?: number }[];
     expense_date?: string;
     receipt_url?: string;
     ai_confirmed?: boolean;

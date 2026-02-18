@@ -44,6 +44,7 @@ export default function Dashboard({ user, tripId, onLeaveTrip }: DashboardProps)
     const [activeTab, setActiveTab] = useState<TabType>('expenses');
     const [expenseFilter, setExpenseFilter] = useState<ExpenseFilter>('all');
     const [showAddExpense, setShowAddExpense] = useState(false);
+    const [limitCount, setLimitCount] = useState(20);
 
     // Fetch initial data and subscribe to updates
     useEffect(() => {
@@ -61,7 +62,7 @@ export default function Dashboard({ user, tripId, onLeaveTrip }: DashboardProps)
 
                 // 2. Hydration & Sync (Fix 2)
                 if (SYNC_AUTHORITY_ENABLED) {
-                    await syncService.initHydration(tripId);
+                    await syncService.initHydration(tripId, limitCount);
                     syncService.startSyncLoop(); // Start periodic background sync
                 }
 
@@ -92,7 +93,7 @@ export default function Dashboard({ user, tripId, onLeaveTrip }: DashboardProps)
                 syncService.stopHydration(tripId);
             }
         };
-    }, [tripId, onLeaveTrip]);
+    }, [tripId, onLeaveTrip, limitCount]);
 
     // Calculate summary
     const summary = calculateSummary(expenses, members, splits);
@@ -135,6 +136,8 @@ export default function Dashboard({ user, tripId, onLeaveTrip }: DashboardProps)
                         onAddExpense={() => setShowAddExpense(true)}
                         currentUserId={user.uid}
                         tripId={tripId}
+                        onLoadMore={() => setLimitCount(Math.max(limitCount, expenses.length) + 20)}
+                        hasMore={expenses.length >= limitCount}
                     />
                 )}
 
