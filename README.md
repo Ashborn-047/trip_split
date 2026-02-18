@@ -16,6 +16,53 @@
 
 ---
 
+## 🤔 Why TripSplit?
+
+Group trips are fun—until it's time to split the bills. Who paid for what? Who owes whom? Spreadsheets and manual math lead to confusion, awkward "I'll pay you back later" conversations, and friendships strained over money.
+
+**TripSplit fixes that.**
+
+| Problem | How TripSplit Helps |
+|---------|---------------------|
+| **"I paid for dinner, who owes me?"** | Log expenses once; everyone sees who paid and who owes what, in real time. |
+| **Too many transfers** | Min-Cash-Flow algorithm reduces payments to the minimum—fewer bank transfers, less hassle. |
+| **Receipts pile up** | AI receipt scanning turns photos into expenses in seconds. |
+| **Unequal splits** | Some had the steak, some had salad? Use itemized splits for fair, per-person amounts. |
+| **Weak Wi‑Fi while traveling** | Works fully offline. Add expenses anywhere; sync when you’re back online. |
+| **Someone isn’t on the app** | Add ghost members—they can owe or be owed without signing up. |
+
+**Built for travelers who hate doing the math.**
+
+---
+
+## 📖 How to Use TripSplit
+
+### Getting Started
+
+1. **Create a trip** — Name it (e.g. "Bali 2026"), set currency, and get a shareable code.
+2. **Invite members** — Share the code. Friends join with one tap. Add ghost members for people without the app.
+3. **Log expenses** — Add manually or scan a receipt with AI. Choose equal split or itemized amounts.
+4. **Check balances** — See who owes whom. The app calculates everything for you.
+5. **Settle up** — Use the optimized settlement plan. Fewer payments, clearer records.
+
+### Example Use Cases
+
+| Scenario | How to Use It |
+|----------|---------------|
+| **Weekend getaway with friends** | Create trip → Add everyone → Log each meal, activity, and accommodation. Split equally or by what each person ordered. |
+| **Family vacation** | Add parents and kids (as ghosts if needed). Track flights, hotels, and daily food. Filter by "Major" vs "Daily" when settling. |
+| **Road trip / gas & tolls** | One person pays fuel; split by distance or passengers. Add tolls and parking as you go. |
+| **Bach party / wedding group** | Track shared meals, accommodation, and activities. Ghost members for attendees who’ll pay back later. |
+| **Coliving or roommate trips** | Use itemized splits for different meals, drinks, or shared purchases. Everyone pays only their share. |
+
+### Quick Tips
+
+- **Offline first:** Add expenses during the trip; they sync automatically when you’re online.
+- **Receipt scanning:** Take a photo of a receipt → AI suggests amount, description, category → confirm and add.
+- **Ghost members:** Perfect for people who’ll Venmo/cash you back but don’t need the app.
+
+---
+
 | Feature | Description |
 |---------|-------------|
 | 🔄 **Real-time Sync** | Expenses sync instantly across all devices via Firestore |
