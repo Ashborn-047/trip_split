@@ -32,10 +32,12 @@ const firebaseConfig = {
 
 // Validate configuration
 if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-    throw new Error(
+    console.error(
         'Missing Firebase configuration. ' +
         'Please set VITE_FIREBASE_* environment variables in your .env file.'
     );
+    // Don't throw - allow app to load but show error in UI
+    // This prevents blank page if env vars are missing
 }
 
 // Initialize Firebase

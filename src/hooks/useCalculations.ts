@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import type { Expense, TripMember, ExpenseSplit, Summary, SettlementTransaction } from '../types';
 import type { WorkerInput, WorkerOutput } from '../workers/calculationWorker';
+import { calculateSummary } from '../utils/balanceCalculator';
+import { calculateSettlements } from '../utils/settlement';
 
 // Import worker (Vite special import for workers)
 // Note: In Vite, we import the worker constructor
+// @ts-ignore - Vite worker import syntax
 import CalculationWorker from '../workers/calculationWorker?worker';
 
 interface CalculationResult {
@@ -14,7 +17,7 @@ interface CalculationResult {
 
 /**
  * Custom hook to offload balance calculations to a Web Worker.
- * Handles worker instantiation, message passing, and result caching.
+ * Falls back to main thread if worker is unavailable.
  */
 export function useCalculations(
     expenses: Expense[],
@@ -26,46 +29,83 @@ export function useCalculations(
     const [isCalculating, setIsCalculating] = useState(true);
 
     const workerRef = useRef<Worker | null>(null);
+    const useWorkerRef = useRef(true); // Start with worker enabled
 
     // Initialize worker once
     useEffect(() => {
-        workerRef.current = new CalculationWorker();
+        try {
+            workerRef.current = new CalculationWorker();
 
-        workerRef.current.onmessage = (event: MessageEvent<WorkerOutput>) => {
-            const { type, payload } = event.data;
-            if (type === 'RESULT') {
-                setSummary(payload.summary);
-                setSettlements(payload.settlements);
+            workerRef.current.onmessage = (event: MessageEvent<WorkerOutput>) => {
+                const { type, payload } = event.data;
+                if (type === 'RESULT') {
+                    setSummary(payload.summary);
+                    setSettlements(payload.settlements);
+                    setIsCalculating(false);
+                }
+            };
+
+            workerRef.current.onerror = (error) => {
+                console.error('Worker error, falling back to main thread:', error);
+                useWorkerRef.current = false;
                 setIsCalculating(false);
-            }
-        };
+            };
+        } catch (error) {
+            console.warn('Failed to initialize worker, using main thread:', error);
+            useWorkerRef.current = false;
+            setIsCalculating(false);
+        }
 
         return () => {
             workerRef.current?.terminate();
         };
     }, []);
 
-    // Send data to worker when inputs change
+    // Calculate when inputs change
     useEffect(() => {
-        if (!workerRef.current) return;
         if (expenses.length === 0 && members.length === 0) {
+            setSummary(null);
+            setSettlements([]);
             setIsCalculating(false);
             return;
         }
 
         setIsCalculating(true);
 
-        const message: WorkerInput = {
-            type: 'CALCULATE',
-            payload: {
-                expenses,
-                members,
-                splits
+        // Use worker if available and initialized
+        if (useWorkerRef.current && workerRef.current) {
+            try {
+                const message: WorkerInput = {
+                    type: 'CALCULATE',
+                    payload: {
+                        expenses,
+                        members,
+                        splits
+                    }
+                };
+
+                workerRef.current.postMessage(message);
+            } catch (error) {
+                console.error('Worker postMessage failed, using main thread:', error);
+                useWorkerRef.current = false;
+                // Fall through to main thread calculation
             }
-        };
+        }
 
-        workerRef.current.postMessage(message);
-
+        // Fallback to main thread (always runs if worker unavailable or failed)
+        if (!useWorkerRef.current || !workerRef.current) {
+            try {
+                const calculatedSummary = calculateSummary(expenses, members, splits);
+                const calculatedSettlements = calculateSettlements(calculatedSummary.globalBalance, members);
+                
+                setSummary(calculatedSummary);
+                setSettlements(calculatedSettlements);
+                setIsCalculating(false);
+            } catch (error) {
+                console.error('Calculation error:', error);
+                setIsCalculating(false);
+            }
+        }
     }, [expenses, members, splits]);
 
     return { summary, settlements, isCalculating };
