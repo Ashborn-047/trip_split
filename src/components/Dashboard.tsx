@@ -6,13 +6,14 @@ import { SYNC_AUTHORITY_ENABLED } from '../config/flags';
 import { localDb } from '../config/localDb';
 import { syncService } from '../services/syncService';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { calculateSummary } from '../utils/balanceCalculator';
+import { useCalculations } from '../hooks/useCalculations'; // Hook that uses Worker
 import Header from './Header';
 import BottomNav from './BottomNav';
 import ExpensesTab from './ExpensesTab';
 import MembersTab from './MembersTab';
 import SettleTab from './SettleTab';
 import AddExpenseModal from './AddExpenseModal';
+import { Loader2 } from 'lucide-react';
 
 interface DashboardProps {
     user: User;
@@ -28,7 +29,7 @@ export default function Dashboard({ user, tripId, onLeaveTrip }: DashboardProps)
     // These queries are reactive and update the UI instantly from Dexie
     const localExpenses = useLiveQuery(() => localDb.expenses.where('trip_id').equals(tripId).toArray(), [tripId]) || [];
     const localMembers = useLiveQuery(() => localDb.members.where('trip_id').equals(tripId).toArray(), [tripId]) || [];
-    const localSplits = useLiveQuery(() => localDb.splits.toArray()) || []; // Simplified for v1
+    const localSplits = useLiveQuery(() => localDb.splits.where('trip_id').equals(tripId).toArray(), [tripId]) || []; // Simplified for v1
 
     const [trip, setTrip] = useState<Trip | null>(null);
     const [remoteMembers] = useState<TripMember[]>([]);
@@ -45,6 +46,10 @@ export default function Dashboard({ user, tripId, onLeaveTrip }: DashboardProps)
     const [expenseFilter, setExpenseFilter] = useState<ExpenseFilter>('all');
     const [showAddExpense, setShowAddExpense] = useState(false);
     const [limitCount, setLimitCount] = useState(20);
+
+    // -- WORKER CALCULATION --
+    // Offloads heavy balance math to a web worker
+    const { summary, isCalculating } = useCalculations(expenses, members, splits);
 
     // Fetch initial data and subscribe to updates
     useEffect(() => {
@@ -95,9 +100,6 @@ export default function Dashboard({ user, tripId, onLeaveTrip }: DashboardProps)
         };
     }, [tripId, onLeaveTrip, limitCount]);
 
-    // Calculate summary
-    const summary = calculateSummary(expenses, members, splits);
-
     // Filter expenses by type
     const filteredExpenses = expenseFilter === 'all'
         ? expenses
@@ -121,10 +123,17 @@ export default function Dashboard({ user, tripId, onLeaveTrip }: DashboardProps)
         <div className="min-h-dvh bg-gray-50 flex flex-col">
             <Header
                 trip={trip}
-                totalSpent={summary.totalSpent}
+                totalSpent={summary?.totalSpent || 0}
                 memberCount={members.length}
                 onLeaveTrip={onLeaveTrip}
             />
+
+            {/* Calculation Indicator (Optional Polish) */}
+            {isCalculating && (
+                 <div className="bg-violet-100 text-violet-800 text-xs py-1 text-center font-bold animate-pulse">
+                     Updating balances...
+                 </div>
+            )}
 
             <main className="flex-1 pb-24 overflow-y-auto">
                 {activeTab === 'expenses' && (
@@ -141,7 +150,7 @@ export default function Dashboard({ user, tripId, onLeaveTrip }: DashboardProps)
                     />
                 )}
 
-                {activeTab === 'members' && (
+                {activeTab === 'members' && summary && (
                     <MembersTab
                         members={members}
                         summary={summary}
@@ -151,7 +160,7 @@ export default function Dashboard({ user, tripId, onLeaveTrip }: DashboardProps)
                     />
                 )}
 
-                {activeTab === 'settle' && (
+                {activeTab === 'settle' && summary && (
                     <SettleTab
                         members={members}
                         summary={summary}
@@ -159,6 +168,14 @@ export default function Dashboard({ user, tripId, onLeaveTrip }: DashboardProps)
                         userId={user.uid}
                     />
                 )}
+
+                {/* Loading State for Tabs if Summary Not Ready */}
+                {(activeTab !== 'expenses' && !summary) && (
+                     <div className="flex justify-center items-center h-40">
+                         <Loader2 className="w-8 h-8 text-violet-500 animate-spin" />
+                     </div>
+                )}
+
             </main>
 
             <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />

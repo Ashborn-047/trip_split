@@ -1,256 +1,146 @@
 @import "tailwindcss";
 
-/* 
- * TripSplit Design System
- * Mobile-first expense tracking app
- */
-
-/* Custom properties */
-:root {
-  --primary: #7c3aed;
-  --primary-dark: #6d28d9;
-  --secondary: #4f46e5;
-  --success: #10b981;
-  --danger: #ef4444;
-  --warning: #f59e0b;
-
-  /* Category colors */
-  --cat-travel: #3b82f6;
-  --cat-food: #f97316;
-  --cat-stay: #8b5cf6;
-  --cat-fun: #ec4899;
-  --cat-other: #6b7280;
+@theme {
+  --color-neo-violet: #8b5cf6;
+  --color-neo-violet-dark: #7c3aed;
+  --color-neo-mint: #4ade80;
+  --color-neo-yellow: #facc15;
+  --color-neo-pink: #f472b6;
+  --color-neo-bg: #f3f4f6;
+  --color-neo-border: #1f2937; /* Gray-900 */
 }
 
-/* Base styles */
-html {
-  -webkit-tap-highlight-color: transparent;
-  scroll-behavior: smooth;
-}
-
+/* Base Styles */
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-neo-bg);
+  font-family: 'Inter', sans-serif;
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* Safe area padding for mobile */
-.pt-safe {
-  padding-top: env(safe-area-inset-top, 0);
+/* Neo-Brutalist Components */
+
+/* Cards & Containers */
+.neo-card {
+  background-color: white;
+  border: 2px solid var(--color-neo-border);
+  box-shadow: 4px 4px 0px var(--color-neo-border);
+  border-radius: 0.75rem; /* rounded-xl */
+  transition: transform 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
 }
 
-.pb-safe {
-  padding-bottom: env(safe-area-inset-bottom, 0);
+.neo-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0px var(--color-neo-border);
 }
 
-/* Scrollbar styling */
+.neo-card:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0px var(--color-neo-border);
+}
+
+/* Buttons */
+.neo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  border: 2px solid var(--color-neo-border);
+  box-shadow: 4px 4px 0px var(--color-neo-border);
+  border-radius: 0.75rem; /* rounded-xl */
+  transition: all 0.1s ease-in-out;
+}
+
+.neo-btn:hover:not(:disabled) {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0px var(--color-neo-border);
+}
+
+.neo-btn:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 0px 0px 0px var(--color-neo-border);
+}
+
+.neo-btn-primary {
+  background-color: var(--color-neo-violet);
+  color: white;
+}
+
+.neo-btn-secondary {
+  background-color: white;
+  color: var(--color-neo-border);
+}
+
+.neo-btn-accent {
+  background-color: var(--color-neo-mint);
+  color: var(--color-neo-border);
+}
+
+.neo-btn-danger {
+  background-color: #ef4444;
+  color: white;
+}
+
+/* Inputs */
+.neo-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background-color: white;
+  border: 2px solid var(--color-neo-border);
+  border-radius: 0.75rem; /* rounded-xl */
+  box-shadow: 2px 2px 0px var(--color-neo-border);
+  font-weight: 600;
+  color: var(--color-neo-border);
+  outline: none;
+  transition: all 0.1s ease-in-out;
+}
+
+.neo-input:focus {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0px var(--color-neo-violet);
+  border-color: var(--color-neo-border);
+}
+
+.neo-input::placeholder {
+  color: #9ca3af; /* Gray-400 */
+  font-weight: 500;
+}
+
+/* Custom Scrollbar for Neo feel */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
+  width: 8px;
 }
-
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
-
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.1);
-  border-radius: 10px;
+  background-color: var(--color-neo-border);
+  border-radius: 4px;
+  border: 2px solid white;
 }
 
-/* Animation utilities */
-@keyframes slide-up {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes slide-in-bottom {
-  from {
-    transform: translateY(100%);
-  }
-
-  to {
-    transform: translateY(0);
-  }
-}
-
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes pulse-soft {
-
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.7;
-  }
-}
-
-.animate-slide-up {
-  animation: slide-up 0.3s ease-out;
-}
-
-.animate-slide-in-bottom {
-  animation: slide-in-bottom 0.3s ease-out;
-}
-
-.animate-fade-in {
-  animation: fade-in 0.2s ease-out;
-}
-
-.animate-pulse-soft {
-  animation: pulse-soft 2s ease-in-out infinite;
-}
-
-/* Active states for buttons */
-button:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-/* Category badge colors */
-.category-travel {
-  background-color: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
-}
-
-.category-food {
-  background-color: rgba(249, 115, 22, 0.1);
-  color: #f97316;
-}
-
-.category-stay {
-  background-color: rgba(139, 92, 246, 0.1);
-  color: #8b5cf6;
-}
-
-.category-fun {
-  background-color: rgba(236, 72, 153, 0.1);
-  color: #ec4899;
-}
-
-.category-other {
-  background-color: rgba(107, 114, 128, 0.1);
-  color: #6b7280;
-}
-
-/* Type badges */
-.type-major {
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  color: white;
-}
-
-.type-daily {
-  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
-  color: white;
-}
-
-/* Gradient backgrounds */
-.bg-gradient-primary {
-  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
-}
-
-.bg-gradient-success {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-}
-
-.bg-gradient-danger {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-}
-
-/* Glass effect */
-.glass {
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-
-.glass-dark {
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-
-/* Card shadows */
-.shadow-card {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05),
-    0 4px 12px rgba(0, 0, 0, 0.05);
-}
-
-.shadow-card-hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1),
-    0 8px 24px rgba(0, 0, 0, 0.08);
-}
-
-/* Input focus states */
-input:focus,
-select:focus,
-textarea:focus {
-  outline: none;
-  border-color: #7c3aed;
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
-}
-
-/* Mobile-specific: prevent zoom on input focus and improve tap targets */
-@media (max-width: 767px) {
-
-  input,
-  select,
-  textarea {
-    font-size: 16px !important;
-  }
-
-  button,
-  .tap-target {
-    min-height: 44px;
-    min-width: 44px;
-  }
-}
-
-/* Dynamic Viewport Height (prevents address bar jump) */
-.min-h-dvh {
-  min-height: 100dvh;
-}
-
-/* Bottom Sheet Modal Styles */
-.bottom-sheet-backdrop {
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-}
-
+/* Bottom Sheet Animation */
 .bottom-sheet {
-  background: white;
-  border-radius: 24px 24px 0 0;
-  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.1);
-  transform-origin: bottom;
-  animation: slide-in-bottom 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  background-color: white;
+  border-top: 2px solid var(--color-neo-border);
+  border-left: 2px solid var(--color-neo-border);
+  border-right: 2px solid var(--color-neo-border);
+  border-top-left-radius: 1.5rem;
+  border-top-right-radius: 1.5rem;
+  box-shadow: 0 -4px 0 rgba(0,0,0,0.1);
+  /* Neo-brutalist doesn't usually use blur/soft shadow, but needed for depth here */
+  box-shadow: 0 -8px 0px var(--color-neo-border);
 }
 
-.bottom-sheet-handle {
-  width: 36px;
-  height: 4px;
-  background: #e5e7eb;
-  border-radius: 2px;
-  margin: 12px auto 4px;
+.bottom-sheet-backdrop {
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px); /* Slight blur for focus */
 }
 
-/* Notch safe zone header */
-.header-safe {
-  padding-top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
 }

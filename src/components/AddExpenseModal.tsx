@@ -1,7 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { TripMember, ExpenseCategory, ExpenseType } from '../types';
 import { mutationService } from '../services/mutationService';
-import { X, Camera, Loader2, Plane, UtensilsCrossed, Home, Sparkles, MoreHorizontal, Users, PencilLine, PieChart } from 'lucide-react';
+import {
+    X, Camera, Loader2, Plane, UtensilsCrossed, Home,
+    Sparkles, MoreHorizontal, Users, PencilLine, PieChart,
+    Check
+} from 'lucide-react';
 import { scanReceipt, fileToBase64 } from '../services/geminiService';
 import { canScanReceipt, incrementUsage, getRemainingScans, FREE_LIMIT } from '../services/usageService';
 
@@ -12,12 +16,12 @@ interface AddExpenseModalProps {
     onClose: () => void;
 }
 
-const categories: { id: ExpenseCategory; label: string; icon: typeof Plane }[] = [
-    { id: 'travel', label: 'Travel', icon: Plane },
-    { id: 'food', label: 'Food', icon: UtensilsCrossed },
-    { id: 'stay', label: 'Stay', icon: Home },
-    { id: 'fun', label: 'Fun', icon: Sparkles },
-    { id: 'other', label: 'Other', icon: MoreHorizontal },
+const categories: { id: ExpenseCategory; label: string; icon: typeof Plane; color: string }[] = [
+    { id: 'travel', label: 'Travel', icon: Plane, color: 'bg-blue-200 border-blue-900 text-blue-900' },
+    { id: 'food', label: 'Food', icon: UtensilsCrossed, color: 'bg-orange-200 border-orange-900 text-orange-900' },
+    { id: 'stay', label: 'Stay', icon: Home, color: 'bg-emerald-200 border-emerald-900 text-emerald-900' },
+    { id: 'fun', label: 'Fun', icon: Sparkles, color: 'bg-purple-200 border-purple-900 text-purple-900' },
+    { id: 'other', label: 'Other', icon: MoreHorizontal, color: 'bg-gray-200 border-gray-900 text-gray-900' },
 ];
 
 export default function AddExpenseModal({ tripId, members, currentUserId, onClose }: AddExpenseModalProps) {
@@ -32,6 +36,9 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
 
     // Splitting Logic
     const [splitType, setSplitType] = useState<'equal' | 'custom' | 'shares'>('equal');
+    const [involvedMembers, setInvolvedMembers] = useState<Set<string>>(new Set(members.map(m => m.id)));
+
+    // Custom/Shares Inputs
     const [customSplits, setCustomSplits] = useState<Record<string, string>>({});
     const [shares, setShares] = useState<Record<string, number>>({});
 
@@ -40,10 +47,28 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
     const [error, setError] = useState('');
 
     const remainingScans = getRemainingScans();
-
     const amountNum = parseFloat(amount) || 0;
+
+    // Derived involved members list (sorted for consistency)
+    const activeMembers = useMemo(() =>
+        members.filter(m => involvedMembers.has(m.id)),
+    [members, involvedMembers]);
+
+    // Calculate remaining amount for custom splits
     const splitTotal = Object.values(customSplits).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
     const remaining = amountNum - splitTotal;
+
+    const toggleMemberInvolvement = (memberId: string) => {
+        setInvolvedMembers(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(memberId)) {
+                if (newSet.size > 1) newSet.delete(memberId); // Prevent removing last member
+            } else {
+                newSet.add(memberId);
+            }
+            return newSet;
+        });
+    };
 
     const handleScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -94,72 +119,48 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        setError('');
 
-        if (!description.trim()) {
-            setError('Please enter a description');
-            return;
-        }
-
-        if (amountNum <= 0) {
-            setError('Please enter a valid amount');
-            return;
-        }
-
-        if (!paidBy) {
-            setError('Please select who paid');
-            return;
-        }
+        if (!description.trim()) { setError('Please enter a description'); return; }
+        if (amountNum <= 0) { setError('Please enter a valid amount'); return; }
+        if (!paidBy) { setError('Please select who paid'); return; }
+        if (activeMembers.length === 0) { setError('At least one person must be involved'); return; }
 
         let custom_splits_payload: { member_id: string; amount: number; shares?: number }[] | undefined;
 
+        // Validation for Custom/Shares
         if (splitType === 'custom') {
             if (Math.abs(remaining) > 0.01) {
-                setError(`Custom split total must match the expense amount. Remaining: ₹${remaining.toFixed(2)}`);
+                setError(`Custom split total must match amount. Remaining: ₹${remaining.toFixed(2)}`);
                 return;
             }
-            custom_splits_payload = members.map(m => ({
+            custom_splits_payload = activeMembers.map(m => ({
                 member_id: m.id,
                 amount: parseFloat(customSplits[m.id]) || 0
             }));
         } else if (splitType === 'shares') {
-            const totalShares = Object.values(shares).reduce((sum, s) => sum + s, 0);
+            const activeShares = activeMembers.map(m => ({ id: m.id, shares: shares[m.id] || 0 }));
+            const totalShares = activeShares.reduce((sum, s) => sum + s.shares, 0);
+
             if (totalShares === 0) {
                 setError('Total shares must be greater than zero');
                 return;
             }
 
-            // Distribute amount based on shares
-            let currentSum = 0;
-            // Filter members with > 0 shares
-            const shareMembers = members.filter(m => (shares[m.id] || 0) > 0);
+            // Distribute locally to validate (backend will recalculate, but good for UX)
+            // Or just send shares and let backend handle it?
+            // The service expects `custom_splits` with amounts even for shares.
+            // Let's use our new integer math logic here or trust the service?
+            // Service calls `SplitEngine`. We need to pass shares data.
 
-            if (shareMembers.length === 0) {
-                 setError('At least one member must have shares');
-                 return;
-            }
-
-            custom_splits_payload = shareMembers.map((m, index) => {
-                const share = shares[m.id] || 0;
-                let shareAmount = 0;
-
-                if (index === shareMembers.length - 1) {
-                    // Last person gets the remainder to ensure exact match
-                    shareAmount = amountNum - currentSum;
-                } else {
-                    shareAmount = parseFloat(((amountNum * share) / totalShares).toFixed(2));
-                    currentSum += shareAmount;
-                }
-
-                return {
-                    member_id: m.id,
-                    amount: Math.round(shareAmount * 100) / 100,
-                    shares: share
-                };
-            });
+            custom_splits_payload = activeMembers.map(m => ({
+                member_id: m.id,
+                amount: 0, // Placeholder, will be calc by SplitEngine
+                shares: shares[m.id] || 0
+            }));
         }
 
         setSaving(true);
-        setError('');
 
         try {
             await mutationService.createExpense({
@@ -170,6 +171,7 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
                 type,
                 paid_by: paidBy,
                 split_type: splitType,
+                involved_member_ids: Array.from(involvedMembers), // NEW: Explicit Subset
                 custom_splits: custom_splits_payload,
                 ai_confirmed: true,
             }, currentUserId);
@@ -183,111 +185,84 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-end justify-center px-safe">
+        <div className="fixed inset-0 z-50 flex items-end justify-center px-safe sm:items-center">
             {/* Backdrop */}
             <div
                 className="absolute inset-0 bottom-sheet-backdrop animate-fade-in"
                 onClick={onClose}
             />
 
-            {/* Sheet */}
-            <div className="bottom-sheet w-full max-w-lg max-h-[92dvh] flex flex-col z-10 relative">
-                <div className="bottom-sheet-handle flex-shrink-0" />
+            {/* Neo-Brutalist Sheet/Card */}
+            <div className="relative w-full max-w-lg bg-white sm:rounded-2xl border-t-2 sm:border-2 border-black shadow-[0_-8px_0_0_rgba(0,0,0,1)] sm:shadow-[8px_8px_0_0_rgba(0,0,0,1)] flex flex-col max-h-[92dvh] z-10 transition-transform">
 
                 {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b">
+                <div className="flex items-center justify-between p-5 border-b-2 border-black bg-yellow-300">
                     <div>
-                        <h2 className="text-xl font-bold text-gray-900">Add Expense</h2>
-                        <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Capture Every Spent</p>
+                        <h2 className="text-2xl font-black text-black uppercase tracking-tight transform -skew-x-6">
+                            Add Expense
+                        </h2>
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                        className="p-2 bg-white border-2 border-black shadow-[4px_4px_0_0_rgba(0,0,0,1)] hover:shadow-[2px_2px_0_0_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] transition-all rounded-lg active:shadow-none active:translate-x-[4px] active:translate-y-[4px]"
                     >
-                        <X className="w-6 h-6 text-gray-400" />
+                        <X className="w-6 h-6 text-black" />
                     </button>
                 </div>
 
                 {/* Scrollable Form */}
-                <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6 pb-12">
-                    {/* Scan Section */}
-                    <div className="grid grid-cols-1 gap-4">
-                        <label className="relative flex items-center justify-center gap-3 border-2 border-dashed border-gray-100 rounded-2xl py-6 hover:border-violet-300 hover:bg-violet-50/30 transition-all cursor-pointer group">
-                            <input
-                                type="file"
-                                accept="image/*"
-                                capture="environment"
-                                onChange={handleScan}
-                                className="absolute inset-0 opacity-0 cursor-pointer"
-                                disabled={scanning}
-                            />
-                            <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${scanning ? 'bg-violet-100' : 'bg-gray-50 group-hover:bg-violet-100'}`}>
-                                {scanning ? (
-                                    <Loader2 className="w-6 h-6 text-violet-600 animate-spin" />
-                                ) : (
-                                    <Camera className={`w-6 h-6 ${scanning ? 'text-violet-600' : 'text-gray-400 group-hover:text-violet-600'}`} />
-                                )}
-                            </div>
-                            <div className="text-left">
-                                <p className="font-semibold text-gray-900 text-sm">
-                                    {scanning ? 'Analyzing Receipt...' : 'Scan with Gemini AI'}
-                                </p>
-                                <p className={`text-xs ${remainingScans === 0 ? 'text-red-500 font-bold' : 'text-gray-500'}`}>
-                                    {remainingScans > 0 ? `${remainingScans} free scans left` : 'Limit reached'}
-                                </p>
-                            </div>
-                        </label>
-                    </div>
+                <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-8 pb-12">
 
+                    {/* 1. Amount & Description (The Core) */}
                     <div className="space-y-4">
-                        {/* Description */}
-                        <div>
-                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 ml-1">
-                                What was it for?
+                        <div className="relative group">
+                            <label className="block text-xs font-bold text-black uppercase mb-1 ml-1 bg-white inline-block px-1 border-2 border-black -mb-3 z-10 relative w-max transform -rotate-2">
+                                Amount
                             </label>
-                            <input
-                                type="text"
-                                value={description}
-                                onChange={(e) => setDescription(e.target.value)}
-                                placeholder="e.g. Sushi Dinner 🍱"
-                                className="w-full px-5 py-4 rounded-2xl bg-gray-50 border-transparent focus:bg-white focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 transition-all text-lg font-medium outline-none"
-                            />
-                        </div>
-
-                        {/* Amount */}
-                        <div>
-                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 ml-1">
-                                How much?
-                            </label>
-                            <div className="relative group">
-                                <span className="absolute left-5 top-1/2 -translate-y-1/2 text-2xl font-bold text-gray-400 group-focus-within:text-violet-600 transition-colors">₹</span>
+                            <div className="relative">
+                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-3xl font-black text-black">₹</span>
                                 <input
                                     type="number"
                                     value={amount}
                                     onChange={(e) => setAmount(e.target.value)}
                                     placeholder="0"
-                                    className="w-full pl-12 pr-5 py-5 rounded-2xl bg-gray-50 border-transparent focus:bg-white focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 transition-all text-3xl font-bold outline-none"
+                                    className="w-full pl-12 pr-4 py-4 text-4xl font-black text-black bg-white border-2 border-black shadow-[4px_4px_0_0_rgba(0,0,0,1)] focus:shadow-[6px_6px_0_0_rgba(139,92,246,1)] focus:border-violet-600 outline-none transition-all rounded-xl"
                                 />
                             </div>
                         </div>
+
+                        <div className="relative">
+                            <label className="block text-xs font-bold text-black uppercase mb-1 ml-1 bg-white inline-block px-1 border-2 border-black -mb-3 z-10 relative w-max transform rotate-1">
+                                Description
+                            </label>
+                            <input
+                                type="text"
+                                value={description}
+                                onChange={(e) => setDescription(e.target.value)}
+                                placeholder="What did you buy?"
+                                className="w-full px-4 py-4 text-lg font-bold text-black bg-white border-2 border-black shadow-[4px_4px_0_0_rgba(0,0,0,1)] focus:shadow-[6px_6px_0_0_rgba(139,92,246,1)] focus:border-violet-600 outline-none transition-all rounded-xl"
+                            />
+                        </div>
                     </div>
 
-                    {/* Category Selection */}
+                    {/* 2. Category Chips */}
                     <div>
-                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">
+                        <label className="block text-xs font-bold text-black uppercase mb-3 ml-1">
                             Category
                         </label>
-                        <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-hide">
+                        <div className="flex flex-wrap gap-3">
                             {categories.map((cat) => {
                                 const Icon = cat.icon;
+                                const isSelected = category === cat.id;
                                 return (
                                     <button
                                         key={cat.id}
                                         type="button"
                                         onClick={() => setCategory(cat.id)}
-                                        className={`flex items-center gap-2 px-4 py-3 rounded-2xl text-sm font-semibold whitespace-nowrap transition-all' ${category === cat.id
-                                            ? 'bg-violet-600 text-white shadow-lg shadow-violet-200 -translate-y-0.5'
-                                            : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                                        className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-black font-bold text-sm transition-all
+                                            ${isSelected
+                                                ? `${cat.color} shadow-[4px_4px_0_0_rgba(0,0,0,1)] -translate-y-1`
+                                                : 'bg-white text-gray-500 hover:bg-gray-50'
                                             }`}
                                     >
                                         <Icon className="w-4 h-4" />
@@ -298,16 +273,16 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
                         </div>
                     </div>
 
-                    {/* Who Paid & Type Selection */}
-                    <div className="grid grid-cols-2 gap-4">
+                    {/* 3. Who Paid? */}
+                    <div className="grid grid-cols-1 gap-4">
                         <div>
-                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 ml-1">
+                            <label className="block text-xs font-bold text-black uppercase mb-2 ml-1">
                                 Paid By
                             </label>
                             <select
                                 value={paidBy}
                                 onChange={(e) => setPaidBy(e.target.value)}
-                                className="w-full px-4 py-3.5 rounded-2xl bg-gray-50 border-transparent focus:bg-white focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 outline-none text-sm font-semibold"
+                                className="w-full px-4 py-3 bg-white border-2 border-black rounded-xl font-bold shadow-[4px_4px_0_0_rgba(0,0,0,1)] focus:shadow-[6px_6px_0_0_rgba(139,92,246,1)] outline-none appearance-none"
                             >
                                 {members.map((member) => (
                                     <option key={member.id} value={member.id}>
@@ -316,95 +291,135 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
                                 ))}
                             </select>
                         </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 ml-1">
-                                Weight
-                            </label>
-                            <div className="flex p-1 bg-gray-50 rounded-2xl">
+                    </div>
+
+                    {/* 4. Split Logic Section (The Complex Part) */}
+                    <div className="border-t-2 border-black pt-6 space-y-6">
+                        <div className="flex justify-between items-center">
+                            <h3 className="text-lg font-black uppercase text-black">Split Details</h3>
+                            <div className="flex bg-white border-2 border-black rounded-lg p-1 gap-1">
                                 <button
                                     type="button"
                                     onClick={() => setType('daily')}
-                                    className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${type === 'daily' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-400'}`}
+                                    className={`px-3 py-1 rounded text-xs font-bold transition-all ${type === 'daily' ? 'bg-orange-300 text-black border border-black' : 'text-gray-400'}`}
                                 >
                                     Daily
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setType('major')}
-                                    className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${type === 'major' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400'}`}
+                                    className={`px-3 py-1 rounded text-xs font-bold transition-all ${type === 'major' ? 'bg-blue-300 text-black border border-black' : 'text-gray-400'}`}
                                 >
                                     Major
                                 </button>
                             </div>
                         </div>
-                    </div>
 
-                    {/* Advanced Splitting Section */}
-                    <div className="pt-2 border-t border-gray-50">
-                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 ml-1">
-                            Splitting Method
-                        </label>
-                        <div className="flex gap-2 mb-6">
+                        {/* Who was involved? (Subset Selection) */}
+                        <div>
+                            <div className="flex justify-between items-center mb-2">
+                                <label className="text-xs font-bold text-black uppercase">
+                                    Involved Members ({activeMembers.length})
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={() => setInvolvedMembers(new Set(members.map(m => m.id)))}
+                                    className="text-[10px] font-bold underline decoration-2 decoration-violet-500 hover:text-violet-600"
+                                >
+                                    Select All
+                                </button>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {members.map(member => {
+                                    const isSelected = involvedMembers.has(member.id);
+                                    return (
+                                        <button
+                                            key={member.id}
+                                            type="button"
+                                            onClick={() => toggleMemberInvolvement(member.id)}
+                                            className={`px-3 py-1.5 rounded-lg border-2 border-black text-xs font-bold transition-all flex items-center gap-1
+                                                ${isSelected
+                                                    ? 'bg-violet-300 text-black shadow-[2px_2px_0_0_rgba(0,0,0,1)]'
+                                                    : 'bg-gray-100 text-gray-400 opacity-60'
+                                                }`}
+                                        >
+                                            {isSelected && <Check className="w-3 h-3" />}
+                                            {member.display_name}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Split Method Tabs */}
+                        <div className="grid grid-cols-3 gap-2">
                             <button
                                 type="button"
                                 onClick={() => setSplitType('equal')}
-                                className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold transition-all border-2 ${splitType === 'equal'
-                                    ? 'border-violet-600 bg-violet-50 text-violet-700'
-                                    : 'border-gray-50 bg-gray-50 text-gray-500'}`}
+                                className={`py-3 rounded-xl border-2 border-black font-bold text-sm transition-all flex flex-col items-center gap-1
+                                    ${splitType === 'equal'
+                                        ? 'bg-mint-300 bg-emerald-300 shadow-[4px_4px_0_0_rgba(0,0,0,1)] -translate-y-1'
+                                        : 'bg-white text-gray-500 hover:bg-gray-50'
+                                    }`}
                             >
                                 <Users className="w-4 h-4" />
-                                Equally
+                                Equal
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setSplitType('custom')}
-                                className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold transition-all border-2 ${splitType === 'custom'
-                                    ? 'border-violet-600 bg-violet-50 text-violet-700'
-                                    : 'border-gray-50 bg-gray-50 text-gray-500'}`}
+                                className={`py-3 rounded-xl border-2 border-black font-bold text-sm transition-all flex flex-col items-center gap-1
+                                    ${splitType === 'custom'
+                                        ? 'bg-yellow-300 shadow-[4px_4px_0_0_rgba(0,0,0,1)] -translate-y-1'
+                                        : 'bg-white text-gray-500 hover:bg-gray-50'
+                                    }`}
                             >
                                 <PencilLine className="w-4 h-4" />
-                                Itemized
+                                Custom
                             </button>
                             <button
                                 type="button"
                                 onClick={() => {
                                     setSplitType('shares');
-                                    // Default 1 share each
-                                    const initialShares: Record<string, number> = {};
-                                    members.forEach(m => initialShares[m.id] = 1);
-                                    setShares(initialShares);
+                                    // Reset shares for active members
+                                    const newShares: Record<string, number> = {};
+                                    activeMembers.forEach(m => newShares[m.id] = 1);
+                                    setShares(newShares);
                                 }}
-                                className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold transition-all border-2 ${splitType === 'shares'
-                                    ? 'border-violet-600 bg-violet-50 text-violet-700'
-                                    : 'border-gray-50 bg-gray-50 text-gray-500'}`}
+                                className={`py-3 rounded-xl border-2 border-black font-bold text-sm transition-all flex flex-col items-center gap-1
+                                    ${splitType === 'shares'
+                                        ? 'bg-pink-300 shadow-[4px_4px_0_0_rgba(0,0,0,1)] -translate-y-1'
+                                        : 'bg-white text-gray-500 hover:bg-gray-50'
+                                    }`}
                             >
                                 <PieChart className="w-4 h-4" />
                                 Shares
                             </button>
                         </div>
 
+                        {/* Dynamic Inputs based on Split Type */}
                         {splitType === 'custom' && (
-                            <div className="space-y-3 bg-gray-50 p-4 rounded-2xl animate-fade-in">
-                                <div className="flex justify-between items-center mb-2 px-1">
-                                    <span className="text-xs font-bold text-gray-500">Member Share</span>
-                                    <span className={`text-xs font-bold ${Math.abs(remaining) < 0.01 ? 'text-success' : 'text-danger'}`}>
-                                        {remaining === 0 ? 'Perfectly split!' : `Left: ₹${remaining.toFixed(2)}`}
+                            <div className="space-y-3 bg-yellow-50 border-2 border-black p-4 rounded-xl shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="text-xs font-bold text-black uppercase">Amounts</span>
+                                    <span className={`text-xs font-black ${remaining === 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                        {remaining === 0 ? 'PERFECT' : `REMAINING: ₹${remaining.toFixed(2)}`}
                                     </span>
                                 </div>
-                                {members.map((member) => (
+                                {activeMembers.map((member) => (
                                     <div key={member.id} className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-[10px] font-bold text-violet-600 border border-gray-100 flex-shrink-0">
+                                        <div className="w-8 h-8 rounded-full bg-white border-2 border-black flex items-center justify-center text-xs font-black">
                                             {member.display_name.charAt(0)}
                                         </div>
-                                        <span className="flex-1 text-sm font-medium text-gray-700">{member.display_name}</span>
+                                        <span className="flex-1 text-sm font-bold truncate">{member.display_name}</span>
                                         <div className="relative w-28">
-                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-black font-bold text-sm">₹</span>
                                             <input
                                                 type="number"
                                                 value={customSplits[member.id] || ''}
                                                 onChange={(e) => handleCustomSplitChange(member.id, e.target.value)}
                                                 placeholder="0"
-                                                className="w-full pl-7 pr-3 py-2.5 rounded-xl border-transparent focus:border-violet-500 outline-none text-sm font-bold"
+                                                className="w-full pl-7 pr-3 py-2 rounded-lg border-2 border-black focus:bg-yellow-100 outline-none text-sm font-bold text-right"
                                             />
                                         </div>
                                     </div>
@@ -413,24 +428,24 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
                         )}
 
                         {splitType === 'shares' && (
-                            <div className="space-y-3 bg-gray-50 p-4 rounded-2xl animate-fade-in">
-                                <div className="flex justify-between items-center mb-2 px-1">
-                                    <span className="text-xs font-bold text-gray-500">Member Shares</span>
-                                    <span className="text-xs font-bold text-violet-600">
-                                        Total: {Object.values(shares).reduce((a, b) => a + b, 0)}
+                            <div className="space-y-3 bg-pink-50 border-2 border-black p-4 rounded-xl shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="text-xs font-bold text-black uppercase">Shares</span>
+                                    <span className="text-xs font-black text-pink-600">
+                                        TOTAL: {Object.values(shares).reduce((a, b) => a + b, 0)}
                                     </span>
                                 </div>
-                                {members.map((member) => (
+                                {activeMembers.map((member) => (
                                     <div key={member.id} className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-[10px] font-bold text-violet-600 border border-gray-100 flex-shrink-0">
+                                        <div className="w-8 h-8 rounded-full bg-white border-2 border-black flex items-center justify-center text-xs font-black">
                                             {member.display_name.charAt(0)}
                                         </div>
-                                        <span className="flex-1 text-sm font-medium text-gray-700">{member.display_name}</span>
-                                        <div className="flex items-center gap-2">
+                                        <span className="flex-1 text-sm font-bold truncate">{member.display_name}</span>
+                                        <div className="flex items-center border-2 border-black rounded-lg bg-white overflow-hidden">
                                             <button
                                                 type="button"
                                                 onClick={() => handleShareChange(member.id, String((shares[member.id] || 0) - 1))}
-                                                className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 font-bold"
+                                                className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 font-bold border-r-2 border-black"
                                             >
                                                 -
                                             </button>
@@ -438,12 +453,12 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
                                                 type="number"
                                                 value={shares[member.id] || 0}
                                                 onChange={(e) => handleShareChange(member.id, e.target.value)}
-                                                className="w-12 text-center py-1 rounded-lg border-transparent bg-transparent font-bold text-lg"
+                                                className="w-10 text-center py-1 bg-transparent font-black text-sm outline-none"
                                             />
                                             <button
                                                 type="button"
                                                 onClick={() => handleShareChange(member.id, String((shares[member.id] || 0) + 1))}
-                                                className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 font-bold"
+                                                className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 font-bold border-l-2 border-black"
                                             >
                                                 +
                                             </button>
@@ -454,22 +469,49 @@ export default function AddExpenseModal({ tripId, members, currentUserId, onClos
                         )}
                     </div>
 
+                    {/* Scan Button (Floating or integrated?) - Let's integrate for Neo look */}
+                    <div className="border-t-2 border-black pt-4">
+                        <label className="relative flex items-center justify-center gap-3 border-2 border-dashed border-black bg-gray-50 rounded-xl py-4 hover:bg-violet-50 hover:border-violet-600 transition-all cursor-pointer group">
+                            <input
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                onChange={handleScan}
+                                className="absolute inset-0 opacity-0 cursor-pointer"
+                                disabled={scanning}
+                            />
+                            {scanning ? (
+                                <Loader2 className="w-5 h-5 text-violet-600 animate-spin" />
+                            ) : (
+                                <Camera className="w-5 h-5 text-black group-hover:text-violet-600" />
+                            )}
+                            <span className="font-bold text-sm group-hover:text-violet-600">
+                                {scanning ? 'Scanning...' : 'Scan Receipt with AI'}
+                            </span>
+                        </label>
+                         {remainingScans <= 2 && (
+                             <p className="text-[10px] font-bold text-center mt-1 text-red-500 uppercase">
+                                 {remainingScans} free scans left
+                             </p>
+                         )}
+                    </div>
+
                     {/* Error & Submit */}
                     {error && (
-                        <div className="bg-red-50 text-red-600 px-4 py-3 rounded-2xl text-sm font-medium border border-red-100">
-                            {error}
+                        <div className="bg-red-100 text-red-900 border-2 border-red-900 px-4 py-3 rounded-xl text-sm font-bold">
+                            🚨 {error}
                         </div>
                     )}
 
                     <button
                         type="submit"
                         disabled={saving}
-                        className="w-full bg-gradient-primary text-white py-5 rounded-2xl font-bold text-lg shadow-xl shadow-violet-200 active:scale-95 transition-all disabled:opacity-70 flex items-center justify-center gap-2"
+                        className="w-full bg-violet-600 text-white border-2 border-black py-4 rounded-xl font-black text-xl uppercase tracking-wider shadow-[4px_4px_0_0_rgba(0,0,0,1)] hover:shadow-[6px_6px_0_0_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-none transition-all disabled:opacity-70 flex items-center justify-center gap-2"
                     >
                         {saving ? (
                             <Loader2 className="w-6 h-6 animate-spin" />
                         ) : (
-                            <>Save Expense</>
+                            <>SAVE EXPENSE</>
                         )}
                     </button>
                 </form>
