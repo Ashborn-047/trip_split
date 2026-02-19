@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { User } from 'firebase/auth';
 import type { Trip, TripMember, Expense, ExpenseSplit } from '../types';
 import { getTrip, subscribeToTrip } from '../services/tripService';
@@ -29,7 +29,18 @@ export default function Dashboard({ user, tripId, onLeaveTrip }: DashboardProps)
     // These queries are reactive and update the UI instantly from Dexie
     const localExpenses = useLiveQuery(() => localDb.expenses.where('trip_id').equals(tripId).toArray(), [tripId]) || [];
     const localMembers = useLiveQuery(() => localDb.members.where('trip_id').equals(tripId).toArray(), [tripId]) || [];
-    const localSplits = useLiveQuery(() => localDb.splits.where('trip_id').equals(tripId).toArray(), [tripId]) || []; // Simplified for v1
+    
+    // Get expense IDs for this trip
+    const expenseIds = useMemo(() => {
+        return localExpenses?.map(e => e.id) || [];
+    }, [localExpenses]);
+    
+    // Get splits for all expenses in this trip (splits don't have trip_id, they link via expense_id)
+    const localSplits = useLiveQuery(() => {
+        if (!expenseIds || expenseIds.length === 0) return Promise.resolve([]);
+        // Query splits where expense_id is in the list of expense IDs
+        return localDb.splits.where('expense_id').anyOf(expenseIds).toArray();
+    }, [expenseIds]) || [];
 
     const [trip, setTrip] = useState<Trip | null>(null);
     const [remoteMembers] = useState<TripMember[]>([]);
