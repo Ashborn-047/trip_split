@@ -191,6 +191,11 @@ export interface CreateExpenseInput {
     type: ExpenseType;
     paid_by: string;       // trip_members.id
     split_type: 'equal' | 'custom' | 'shares';
+    /**
+     * For 'equal' splits: List of member IDs participating in the split.
+     * If omitted, defaults to ALL trip members (legacy behavior).
+     */
+    involved_member_ids?: string[];
     custom_splits?: { member_id: string; amount: number; shares?: number }[];
     expense_date?: string;
     receipt_url?: string;

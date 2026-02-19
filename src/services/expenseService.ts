@@ -5,6 +5,7 @@
  * 1. paid_by references member document ID (from members subcollection)
  * 2. Custom splits validated client-side (Firestore doesn't have triggers)
  * 3. ai_confirmed flag tracks AI-extracted data confirmation
+ * 4. ALL expenses now have explicit splits stored in subcollection
  * 
  * MIGRATION NOTE: Service interface matches Supabase version.
  */
@@ -27,6 +28,8 @@ import {
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { Expense, ExpenseSplit, CreateExpenseInput } from '../types';
+import { calculateSplits } from '../utils/splitEngine';
+import { getTripMembers } from './tripService';
 
 /**
  * Converts Firestore timestamp to ISO string.
@@ -101,7 +104,8 @@ export async function getExpenseSplits(
 
     const allSplits: ExpenseSplit[] = [];
 
-    // Fetch splits for each expense (Firestore doesn't support IN queries across subcollections)
+    // Fetch splits for each expense (Firestore doesn't have Collection Group queries that work easily here without index)
+    // We iterate because typical usage is small batch or single expense details
     for (const expenseId of expenseIds) {
         const splitsRef = collection(db, 'trips', tripId, 'expenses', expenseId, 'splits');
         const snapshot = await getDocs(splitsRef);
@@ -122,10 +126,11 @@ export async function getExpenseSplits(
 }
 
 /**
- * Creates a new expense with optional custom splits.
+ * Creates a new expense with explicit splits calculated by SplitEngine.
  * 
- * Client-side validation ensures splits sum to expense amount.
- * (Firestore doesn't have triggers like Supabase)
+ * DESIGN CHANGE:
+ * Always calculates and saves splits to 'splits' subcollection.
+ * This "freezes" the division logic at the time of creation.
  */
 export async function createExpense(
     input: CreateExpenseInput,
@@ -136,19 +141,31 @@ export async function createExpense(
         throw new Error('paid_by is required and must reference a trip member');
     }
 
-    // Validate custom/shares splits if provided
-    if (input.split_type === 'custom' || input.split_type === 'shares') {
-        if (!input.custom_splits || input.custom_splits.length === 0) {
-            throw new Error(`Splits required when split_type is "${input.split_type}"`);
-        }
+    // Determine involved members
+    let involvedMemberIds = input.involved_member_ids;
 
-        const splitTotal = input.custom_splits.reduce((sum, s) => sum + s.amount, 0);
-        if (Math.abs(splitTotal - input.amount) > 0.01) {
-            throw new Error(
-                `Split total (${splitTotal}) does not match expense amount (${input.amount})`
-            );
-        }
+    // Legacy/Fallback: If no specific members involved, assume ALL trip members
+    if (!involvedMemberIds || involvedMemberIds.length === 0) {
+        const members = await getTripMembers(input.trip_id);
+        involvedMemberIds = members.map(m => m.id);
     }
+
+    // Map custom splits if present
+    const mappedCustomSplits = input.custom_splits?.map(s => ({
+        memberId: s.member_id,
+        amount: s.amount,
+        shares: s.shares
+    }));
+
+    // Calculate explicit splits using the Engine
+    // This throws if amounts don't match or inputs are invalid
+    const { splits } = calculateSplits({
+        totalAmount: input.amount,
+        payerId: input.paid_by,
+        splitType: input.split_type,
+        involvedMemberIds: involvedMemberIds,
+        customSplits: mappedCustomSplits
+    });
 
     const expensesRef = collection(db, 'trips', input.trip_id, 'expenses');
 
@@ -169,25 +186,26 @@ export async function createExpense(
 
     const expenseRef = await addDoc(expensesRef, expenseData);
 
-    // Add custom/shares splits if applicable
-    if ((input.split_type === 'custom' || input.split_type === 'shares') && input.custom_splits) {
-        const batch = writeBatch(db);
-        const splitsRef = collection(expenseRef, 'splits');
+    // Save the explicit splits
+    const batch = writeBatch(db);
+    const splitsRef = collection(expenseRef, 'splits');
 
-        for (const split of input.custom_splits) {
-            const splitDocRef = doc(splitsRef);
-            const data: any = {
-                member_id: split.member_id,
-                amount: split.amount,
-            };
-            if (split.shares !== undefined) {
-                data.shares = split.shares;
-            }
-            batch.set(splitDocRef, data);
+    for (const split of splits) {
+        const splitDocRef = doc(splitsRef);
+        const data: any = {
+            member_id: split.member_id, // Note: SplitEngine returns snake_case member_id now?
+                                        // Wait, let's check SplitEngine return type.
+                                        // SplitResult.splits is Omit<ExpenseSplit...>.
+                                        // ExpenseSplit has member_id.
+            amount: split.amount,
+        };
+        if (split.shares !== undefined) {
+            data.shares = split.shares;
         }
-
-        await batch.commit();
+        batch.set(splitDocRef, data);
     }
+
+    await batch.commit();
 
     return {
         id: expenseRef.id,
