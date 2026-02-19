@@ -12,6 +12,8 @@ interface ExpensesTabProps {
     onAddExpense: () => void;
     currentUserId: string;
     tripId: string;
+    onLoadMore?: () => void;
+    hasMore?: boolean;
 }
 
 const categoryIcons: Record<string, typeof Plane> = {
@@ -38,6 +40,8 @@ export default function ExpensesTab({
     onAddExpense,
     currentUserId,
     tripId,
+    onLoadMore,
+    hasMore
 }: ExpensesTabProps) {
     const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -164,6 +168,17 @@ export default function ExpensesTab({
                     })
                 )}
             </div>
+
+            {hasMore && onLoadMore && expenses.length > 0 && (
+                <div className="flex justify-center mt-6 mb-8">
+                    <button
+                        onClick={onLoadMore}
+                        className="px-6 py-2.5 bg-white text-violet-600 font-semibold rounded-xl shadow-sm border border-violet-100 hover:bg-violet-50 transition-colors"
+                    >
+                        Load More
+                    </button>
+                </div>
+            )}
 
             {/* FAB */}
             <button

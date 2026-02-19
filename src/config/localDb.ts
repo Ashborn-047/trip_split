@@ -31,7 +31,7 @@ export interface LocalExpense {
     category: 'travel' | 'food' | 'stay' | 'fun' | 'other';
     type: 'major' | 'daily';
     paid_by: string; // Member ID
-    split_type: 'equal' | 'custom';
+    split_type: 'equal' | 'custom' | 'shares';
     expense_date: string;
     receipt_url: string | null;
     ai_confirmed: boolean;
@@ -46,6 +46,7 @@ export interface LocalSplit {
     expense_id: string;
     member_id: string;
     amount: number;
+    shares?: number;
 }
 
 export interface LocalMutation {

@@ -59,8 +59,8 @@ export function calculateBalances(
         }
 
         // Debit the consumers
-        if (expense.split_type === 'custom') {
-            // Use custom split amounts
+        if (expense.split_type === 'custom' || expense.split_type === 'shares') {
+            // Use custom split amounts (pre-calculated for shares)
             const expenseSplits = splitsMap.get(expense.id);
             if (expenseSplits) {
                 expenseSplits.forEach((splitAmount, memberId) => {
