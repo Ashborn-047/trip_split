@@ -6,6 +6,7 @@
  * 2. No rounding during calculation - only at display layer
  * 3. Equal splits use exact division, drift handled by settlement rounding
  * 4. Custom splits are validated at DB level via trigger
+ * 5. NEW: Prioritizes explicit 'splits' (ExpenseSplit[]) over legacy implicit calculation.
  */
 
 import type { Expense, ExpenseSplit, Balance, Summary, TripMember } from '../types';
@@ -19,8 +20,8 @@ import type { Expense, ExpenseSplit, Balance, Summary, TripMember } from '../typ
  *   Negative = Owes money
  * 
  * @param expenses - List of expenses to calculate
- * @param members - All trip members (for equal split calculation)
- * @param splits - Custom splits (only used when split_type = 'custom')
+ * @param members - All trip members (for equal split calculation fallback)
+ * @param splits - All expense splits (explicit shares for equal/custom/shares)
  * @returns Balance map: member_id → net balance
  */
 export function calculateBalances(
@@ -54,30 +55,38 @@ export function calculateBalances(
         if (balances[payerId] !== undefined) {
             balances[payerId] += amount;
         } else {
-            // Payer not in current member list (edge case)
+            // Payer not in current member list (edge case: removed member)
             balances[payerId] = amount;
         }
 
         // Debit the consumers
-        if (expense.split_type === 'custom' || expense.split_type === 'shares') {
-            // Use custom split amounts (pre-calculated for shares)
-            const expenseSplits = splitsMap.get(expense.id);
-            if (expenseSplits) {
-                expenseSplits.forEach((splitAmount, memberId) => {
-                    if (balances[memberId] !== undefined) {
-                        balances[memberId] -= splitAmount;
-                    } else {
-                        balances[memberId] = -splitAmount;
-                    }
-                });
-            }
-        } else {
-            // Equal split among all current members
-            const splitAmount = amount / memberIds.length;
-            memberIds.forEach(memberId => {
-                balances[memberId] -= splitAmount;
+        const expenseSplits = splitsMap.get(expense.id);
+
+        // NEW LOGIC: If explicit splits exist, use them (Single Source of Truth)
+        if (expenseSplits && expenseSplits.size > 0) {
+            expenseSplits.forEach((splitAmount, memberId) => {
+                if (balances[memberId] !== undefined) {
+                    balances[memberId] -= splitAmount;
+                } else {
+                    // Member involved in split but not in current member list
+                    balances[memberId] = -splitAmount;
+                }
             });
         }
+        // OLD LOGIC (Fallback): If no splits found and type is 'equal', assume legacy implicit split
+        else if (expense.split_type === 'equal') {
+            // Equal split among all current members (Legacy behavior)
+            // Note: This causes the "history rewriting" bug if members change,
+            // but is necessary for backward compatibility with old data.
+            if (memberIds.length > 0) {
+                const splitAmount = amount / memberIds.length;
+                memberIds.forEach(memberId => {
+                    balances[memberId] -= splitAmount;
+                });
+            }
+        }
+        // If custom/shares but no splits found -> Data inconsistency or fetch lag.
+        // We skip processing to avoid incorrect assumptions.
     });
 
     return balances;
